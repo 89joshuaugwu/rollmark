@@ -1,0 +1,49 @@
+rules_version = '2';
+
+// ⚠️ MANUAL PUBLISH REQUIRED ⚠️
+// Copy this file's contents into Firebase Console → Firestore Database →
+// Rules → paste → Publish. This cannot be automated from the app or CI —
+// same quirk as PenWork4Me. Nothing writes to production until you click
+// Publish yourself.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(lecturerId) {
+      return isSignedIn() && request.auth.uid == lecturerId;
+    }
+
+    // Lecturers can only read/write their own profile doc.
+    match /lecturers/{uid} {
+      allow read, write: if isOwner(uid);
+    }
+
+    // Courses belong to a lecturer. Public has no access.
+    match /courses/{courseId} {
+      allow read, update, delete: if isOwner(resource.data.lecturerId);
+      allow create: if isSignedIn() && request.resource.data.lecturerId == request.auth.uid;
+    }
+
+    // Sessions must be readable by anonymous students (to load /attend/[id])
+    // but only writable by the owning lecturer.
+    match /sessions/{sessionId} {
+      allow get: if true; // anyone with the link can load session metadata
+      allow list: if isSignedIn();
+      allow create: if isSignedIn() && request.resource.data.lecturerId == request.auth.uid;
+      allow update, delete: if isOwner(resource.data.lecturerId);
+    }
+
+    // Attendance records: anonymous students can create their own record
+    // (rate-limited by the duplicate/device checks in the app layer), but
+    // only the owning lecturer can read, update, or delete them.
+    match /attendanceRecords/{recordId} {
+      allow create: if request.resource.data.sessionId is string
+        && request.resource.data.regNumber is string;
+      allow read, update, delete: if isOwner(resource.data.lecturerId);
+    }
+  }
+}

@@ -1,0 +1,103 @@
+@import "tailwindcss";
+
+@theme {
+  /* Brand colors — RollMark DESIGN.md §1 */
+  --color-emerald: #10b981;
+  --color-slate-dark: #1f2937;
+  --color-amber: #f59e0b;
+  --color-lime: #22c55e;
+  --color-rose: #f43f5e;
+  --color-bg: #0f172a;
+  --color-card: #1e293b;
+  --color-text: #ffffff;
+  --color-text-secondary: #94a3b8;
+
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  --radius-lg: 0.75rem;
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: none;
+}
+
+* {
+  border-color: rgb(148 163 184 / 0.12);
+}
+
+::selection {
+  background-color: var(--color-emerald);
+  color: #06251c;
+}
+
+@media (max-width: 767px) {
+  button,
+  input,
+  select,
+  textarea {
+    font-size: 16px; /* prevents iOS zoom on focus */
+  }
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 8px;
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-4px); }
+  40% { transform: translateX(4px); }
+  60% { transform: translateX(-4px); }
+  80% { transform: translateX(4px); }
+}
+.animate-shake {
+  animation: shake 0.2s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+
+@keyframes qr-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+.animate-qr-pulse {
+  animation: qr-pulse 1s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+@media print {
+  body {
+    background: #ffffff !important;
+    color: #0f172a !important;
+  }
+  #analytics-report {
+    color: #0f172a !important;
+  }
+  #analytics-report * {
+    color: #0f172a !important;
+    background: #ffffff !important;
+    border-color: #cbd5e1 !important;
+  }
+}
