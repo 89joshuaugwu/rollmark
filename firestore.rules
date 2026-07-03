@@ -43,7 +43,8 @@ service cloud.firestore {
     match /attendanceRecords/{recordId} {
       allow create: if request.resource.data.sessionId is string
         && request.resource.data.regNumber is string;
-      allow read, update, delete: if isOwner(resource.data.lecturerId);
+      allow read: if true;
+      allow update, delete: if isOwner(resource.data.lecturerId);
     }
   }
 }

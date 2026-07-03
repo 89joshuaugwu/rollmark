@@ -154,6 +154,7 @@ export function AttendanceForm({ sessionId, token }: { sessionId: string; token?
       });
       setStage("success");
     } catch (err) {
+      console.error("Attendance submission error:", err);
       if (err instanceof DuplicateAttendanceError) {
         setFormError("You've already marked attendance for this session.");
       } else {
