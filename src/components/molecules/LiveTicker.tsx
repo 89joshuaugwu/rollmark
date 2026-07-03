@@ -1,7 +1,7 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import { CheckCircle2, AlertTriangle, Trash2, Flag } from "lucide-react";
+import { CheckCircle2, AlertTriangle, Trash2, Flag, FlagOff } from "lucide-react";
 import { timeAgo } from "@/lib/utils";
 import type { AttendanceRecord } from "@/types";
 
@@ -9,10 +9,12 @@ export function LiveTicker({
   records,
   onRemove,
   onFlag,
+  onUnflag,
 }: {
   records: AttendanceRecord[];
   onRemove?: (record: AttendanceRecord) => void;
   onFlag?: (record: AttendanceRecord) => void;
+  onUnflag?: (record: AttendanceRecord) => void;
 }) {
   if (records.length === 0) {
     return (
@@ -53,21 +55,30 @@ export function LiveTicker({
                 </p>
               </div>
             </div>
-            <div className="flex shrink-0 gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+            <div className="flex shrink-0 gap-1 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100">
               {onFlag && !r.flagged && (
                 <button
                   onClick={() => onFlag(r)}
                   aria-label="Flag as proxy"
-                  className="rounded-md p-1.5 text-text-secondary hover:bg-amber/10 hover:text-amber"
+                  className="flex h-10 w-10 items-center justify-center rounded-md text-text-secondary hover:bg-amber/10 hover:text-amber"
                 >
                   <Flag className="h-4 w-4" />
+                </button>
+              )}
+              {onUnflag && r.flagged && (
+                <button
+                  onClick={() => onUnflag(r)}
+                  aria-label="Remove flag"
+                  className="flex h-10 w-10 items-center justify-center rounded-md text-text-secondary hover:bg-emerald/10 hover:text-emerald"
+                >
+                  <FlagOff className="h-4 w-4" />
                 </button>
               )}
               {onRemove && (
                 <button
                   onClick={() => onRemove(r)}
                   aria-label="Remove"
-                  className="rounded-md p-1.5 text-text-secondary hover:bg-rose/10 hover:text-rose"
+                  className="flex h-10 w-10 items-center justify-center rounded-md text-text-secondary hover:bg-rose/10 hover:text-rose"
                 >
                   <Trash2 className="h-4 w-4" />
                 </button>

@@ -49,6 +49,7 @@ export interface AttendanceSession {
 export interface AttendanceRecord {
   id: string;
   sessionId: string;
+  lecturerId: string;
   courseCode: string;
   regNumber: string;
   firstName: string;

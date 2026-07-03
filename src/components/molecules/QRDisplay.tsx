@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import QRCode from "qrcode";
+import { useEffect, useState } from "react";
+import { QRCodeSVG } from "qrcode.react";
 import { Copy, Check } from "lucide-react";
 import { QR_ROTATION_MS, msUntilNextRotation } from "@/lib/qrToken";
 import { notify } from "@/components/ui/Toast";
@@ -44,18 +44,7 @@ export function QRDisplay({
   value: string;
   qrTokenUpdatedAt: number;
 }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
   const [copied, setCopied] = useState(false);
-
-  useEffect(() => {
-    if (canvasRef.current) {
-      QRCode.toCanvas(canvasRef.current, value, {
-        width: 320,
-        margin: 1,
-        color: { dark: "#0F172A", light: "#FFFFFF" },
-      }).catch(() => {});
-    }
-  }, [value]);
 
   const copyLink = async () => {
     await navigator.clipboard.writeText(value);
@@ -66,14 +55,21 @@ export function QRDisplay({
 
   return (
     <div className="flex flex-col items-center gap-3">
-      <div className="relative rounded-2xl border-2 border-emerald bg-white p-3 shadow-lg md:h-[340px] md:w-[340px]">
-        <canvas ref={canvasRef} className="h-full w-full rounded-lg" />
+      <div className="relative flex items-center justify-center rounded-2xl border-2 border-emerald bg-white p-3 shadow-lg">
+        <QRCodeSVG
+          value={value}
+          size={280}
+          level="M"
+          fgColor="#0F172A"
+          bgColor="#FFFFFF"
+          className="h-[70vw] max-h-[320px] w-[70vw] max-w-[320px] md:h-[320px] md:w-[320px]"
+        />
       </div>
       <RotationCountdown key={qrTokenUpdatedAt} qrTokenUpdatedAt={qrTokenUpdatedAt} />
       <p className="text-sm text-text-secondary">Scan or refreshes automatically</p>
       <button
         onClick={copyLink}
-        className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-1.5 text-xs text-text-secondary hover:bg-white/5 hover:text-white"
+        className="inline-flex min-h-[44px] items-center gap-1.5 rounded-lg border border-white/10 px-3.5 text-xs text-text-secondary hover:bg-white/5 hover:text-white"
       >
         {copied ? <Check className="h-3.5 w-3.5 text-lime" /> : <Copy className="h-3.5 w-3.5" />}
         {copied ? "Copied" : "Copy link"}

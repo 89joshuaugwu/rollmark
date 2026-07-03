@@ -10,9 +10,10 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
-import { AlertTriangle, Printer } from "lucide-react";
+import { AlertTriangle, FileText } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { getCourses, listSessions, getAllRecordsForLecturer } from "@/lib/firestore";
+import { exportAnalyticsPdf } from "@/lib/pdfExport";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
@@ -122,12 +123,21 @@ export function AnalyticsDashboard() {
 
   if (loading) return <Spinner label="Crunching your attendance data..." />;
 
+  const handleDownload = () => {
+    exportAnalyticsPdf({
+      totalSessions: sessions.length,
+      totalStudentsMarked,
+      avgAttendanceRate,
+      atRiskStudents,
+    });
+  };
+
   return (
     <div id="analytics-report">
       <div className="mb-5 flex items-center justify-between">
         <h1 className="text-2xl font-bold">Attendance analytics</h1>
-        <Button variant="secondary" onClick={() => window.print()} className="print:hidden">
-          <Printer className="h-4 w-4" />
+        <Button variant="secondary" onClick={handleDownload}>
+          <FileText className="h-4 w-4" />
           Download report
         </Button>
       </div>

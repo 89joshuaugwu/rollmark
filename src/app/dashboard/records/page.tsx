@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Papa from "papaparse";
 import { Search, Download } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { getAllRecordsForLecturer, getCourses } from "@/lib/firestore";
@@ -11,16 +12,16 @@ import { StudentRow, StudentTableRow } from "@/components/molecules/StudentRow";
 import type { AttendanceRecord, Course } from "@/types";
 
 function toCsv(records: AttendanceRecord[]): string {
-  const header = ["Reg Number", "Surname", "First Name", "Course", "Submitted At", "Flagged"];
-  const rows = records.map((r) => [
-    r.regNumber,
-    r.surname,
-    r.firstName,
-    r.courseCode,
-    new Date(r.submittedAt).toISOString(),
-    r.flagged ? "Yes" : "No",
-  ]);
-  return [header, ...rows].map((row) => row.map((v) => `"${v}"`).join(",")).join("\n");
+  return Papa.unparse(
+    records.map((r) => ({
+      "Reg Number": r.regNumber,
+      Surname: r.surname,
+      "First Name": r.firstName,
+      Course: r.courseCode,
+      "Submitted At": new Date(r.submittedAt).toISOString(),
+      Flagged: r.flagged ? "Yes" : "No",
+    }))
+  );
 }
 
 export default function RecordsPage() {

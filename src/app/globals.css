@@ -60,6 +60,26 @@ body {
   border-radius: 8px;
 }
 
+/* Larger touch target for the geofence radius slider thumb — the native
+   default is too small to reliably drag on a phone. */
+.rollmark-slider::-webkit-slider-thumb {
+  appearance: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 9999px;
+  background: var(--color-emerald);
+  border: 3px solid #0f172a;
+  cursor: pointer;
+}
+.rollmark-slider::-moz-range-thumb {
+  width: 28px;
+  height: 28px;
+  border-radius: 9999px;
+  background: var(--color-emerald);
+  border: 3px solid #0f172a;
+  cursor: pointer;
+}
+
 @keyframes shake {
   0%, 100% { transform: translateX(0); }
   20% { transform: translateX(-4px); }
@@ -84,20 +104,5 @@ body {
     animation-duration: 0.001ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
-  }
-}
-
-@media print {
-  body {
-    background: #ffffff !important;
-    color: #0f172a !important;
-  }
-  #analytics-report {
-    color: #0f172a !important;
-  }
-  #analytics-report * {
-    color: #0f172a !important;
-    background: #ffffff !important;
-    border-color: #cbd5e1 !important;
   }
 }

@@ -55,7 +55,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-bg text-white md:flex">
       {/* Desktop sidebar */}
-      <aside className="hidden w-64 shrink-0 border-r border-white/5 bg-slate-dark/40 md:flex md:flex-col print:hidden">
+      <aside className="hidden w-64 shrink-0 border-r border-white/5 bg-slate-dark/40 md:flex md:flex-col">
         <div className="flex items-center gap-2 px-6 py-5">
           <ScanLine className="h-6 w-6 text-emerald" />
           <span className="text-lg font-bold">RollMark</span>
@@ -89,7 +89,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </aside>
 
       {/* Mobile top bar */}
-      <header className="flex items-center justify-between border-b border-white/5 px-4 py-3 md:hidden print:hidden">
+      <header className="flex items-center justify-between border-b border-white/5 px-4 py-3 md:hidden">
         <div className="flex items-center gap-2">
           <ScanLine className="h-5 w-5 text-emerald" />
           <span className="font-bold">RollMark</span>
@@ -108,7 +108,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </main>
 
       {/* Mobile bottom nav */}
-      <nav className="fixed inset-x-0 bottom-0 z-40 flex border-t border-white/5 bg-slate-dark/95 backdrop-blur md:hidden print:hidden">
+      <nav className="fixed inset-x-0 bottom-0 z-40 flex border-t border-white/5 bg-slate-dark/95 backdrop-blur md:hidden">
         {MOBILE_NAV_ITEMS.map(({ href, label, icon: Icon }) => (
           <Link
             key={href}

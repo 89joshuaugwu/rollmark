@@ -46,6 +46,30 @@ async function ensureLecturerDoc(user: User): Promise<LecturerProfile> {
   return profile;
 }
 
+/**
+ * The Firebase client SDK's own auth state lives in IndexedDB and isn't
+ * visible to Next.js server components / middleware. This mirrors it into
+ * an httpOnly cookie so `middleware.ts` and `dashboard/layout.tsx` can
+ * gate access server-side instead of only in the browser after hydration.
+ */
+async function syncSessionCookie(user: User | null) {
+  try {
+    if (user) {
+      const idToken = await user.getIdToken();
+      await fetch("/api/auth/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ idToken }),
+      });
+    } else {
+      await fetch("/api/auth/session", { method: "DELETE" });
+    }
+  } catch {
+    // Non-fatal: worst case the server-side gate falls back to redirecting
+    // to login, which is the safe direction to fail in.
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<LecturerProfile | null>(null);
@@ -57,6 +81,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (u) {
         const p = await ensureLecturerDoc(u);
         setProfile(p);
+        await syncSessionCookie(u);
       } else {
         setProfile(null);
       }
@@ -70,18 +95,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     profile,
     loading,
     signInEmail: async (email, password) => {
-      await signInWithEmailAndPassword(auth, email, password);
+      const cred = await signInWithEmailAndPassword(auth, email, password);
+      await syncSessionCookie(cred.user);
     },
     signUpEmail: async (email, password, name) => {
       const cred = await createUserWithEmailAndPassword(auth, email, password);
       await updateProfile(cred.user, { displayName: name });
       await ensureLecturerDoc(cred.user);
+      await syncSessionCookie(cred.user);
     },
     signInGoogle: async () => {
       const cred = await signInWithPopup(auth, googleProvider);
       await ensureLecturerDoc(cred.user);
+      await syncSessionCookie(cred.user);
     },
     signOut: async () => {
+      await syncSessionCookie(null);
       await fbSignOut(auth);
     },
   };

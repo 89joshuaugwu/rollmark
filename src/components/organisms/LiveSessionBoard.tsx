@@ -14,12 +14,12 @@ import { notify } from "@/components/ui/Toast";
 import {
   subscribeToSession,
   subscribeToRecords,
-  rotateQrToken,
-  endSession,
   markAttendanceManually,
   removeAttendanceRecord,
   flagAttendanceRecord,
+  unflagAttendanceRecord,
 } from "@/lib/firestore";
+import { rotateQrTokenAction, updateGeofenceAction, endSessionAction } from "@/lib/actions/session-actions";
 import { buildAttendUrl, msUntilNextRotation, QR_ROTATION_MS } from "@/lib/qrToken";
 import { getCurrentLocation, GeolocationError } from "@/lib/geolocation";
 import { timeAgo } from "@/lib/utils";
@@ -52,7 +52,10 @@ export function LiveSessionBoard({ sessionId }: { sessionId: string }) {
       if (!isFirstRecordsLoad.current) {
         const newOnes = recs.filter((r) => !knownRecordIds.current.has(r.id));
         newOnes.forEach((r) => {
-          if (!r.markedManually) {
+          if (r.markedManually) return;
+          if (r.flagged) {
+            notify.info(`⚠️ Possible duplicate device: ${r.surname} ${r.firstName}`);
+          } else {
             notify.success(`New attendance: ${r.surname} ${r.firstName}`);
           }
         });
@@ -64,12 +67,12 @@ export function LiveSessionBoard({ sessionId }: { sessionId: string }) {
     return () => unsub();
   }, [sessionId]);
 
-  // Auto-rotate the QR token every 30s while the session is active.
+  // Auto-rotate the QR token every 15s while the session is active.
   useEffect(() => {
     if (!session || session.status !== "active") return;
     const ms = msUntilNextRotation(session.qrTokenUpdatedAt);
     const timeout = setTimeout(async () => {
-      await rotateQrToken(sessionId);
+      await rotateQrTokenAction(sessionId);
     }, ms || QR_ROTATION_MS);
     return () => clearTimeout(timeout);
   }, [session, sessionId]);
@@ -85,8 +88,7 @@ export function LiveSessionBoard({ sessionId }: { sessionId: string }) {
     setRecapturing(true);
     try {
       const point = await getCurrentLocation();
-      const { updateGeofence } = await import("@/lib/firestore");
-      await updateGeofence(sessionId, {
+      await updateGeofenceAction(sessionId, {
         center: point,
         radiusMeters: session.geofence?.radiusMeters ?? 50,
       });
@@ -125,7 +127,7 @@ export function LiveSessionBoard({ sessionId }: { sessionId: string }) {
   const handleEnd = async () => {
     setEnding(true);
     try {
-      await endSession(sessionId);
+      await endSessionAction(sessionId);
       notify.success("Session ended");
       router.push(`/dashboard/sessions/${sessionId}/history`);
     } catch {
@@ -186,6 +188,7 @@ export function LiveSessionBoard({ sessionId }: { sessionId: string }) {
           records={records}
           onRemove={(r) => removeAttendanceRecord(r.id, sessionId)}
           onFlag={(r) => flagAttendanceRecord(r.id, "Flagged by lecturer")}
+          onUnflag={(r) => unflagAttendanceRecord(r.id)}
         />
       </div>
 

@@ -2,25 +2,32 @@
 
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { MapPin, CheckCircle2, AlertCircle, RefreshCw } from "lucide-react";
+import { MapPin, CheckCircle2, AlertCircle } from "lucide-react";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { Confetti } from "@/components/ui/Confetti";
-import { getSession, submitAttendance, DuplicateAttendanceError } from "@/lib/firestore";
 import { getCurrentLocation, watchLocation, GeolocationError } from "@/lib/geolocation";
-import { getDeviceFingerprint } from "@/lib/qrToken";
+import { getBrowserFingerprint } from "@/lib/fingerprint";
 import { haversineMeters, formatDistance } from "@/lib/utils";
-import type { AttendanceSession, GeoPoint } from "@/types";
+import type { GeoPoint, SessionField, SessionMode } from "@/types";
 
 type Stage = "loading" | "invalid" | "expired" | "ended" | "form" | "success";
 
+interface PublicSessionInfo {
+  id: string;
+  courseCode: string;
+  courseName: string;
+  mode: SessionMode;
+  fields: SessionField[];
+  geofence: { center: GeoPoint; radiusMeters: number } | null;
+}
+
 export function AttendanceForm({ sessionId, token }: { sessionId: string; token?: string }) {
   const [stage, setStage] = useState<Stage>("loading");
-  const [session, setSession] = useState<AttendanceSession | null>(null);
+  const [session, setSession] = useState<PublicSessionInfo | null>(null);
 
   const [location, setLocation] = useState<GeoPoint | null>(null);
   const [locationDenied, setLocationDenied] = useState(false);
-  const [locating, setLocating] = useState(false);
   const [distance, setDistance] = useState<number | null>(null);
 
   const [values, setValues] = useState<Record<string, string>>({});
@@ -28,25 +35,26 @@ export function AttendanceForm({ sessionId, token }: { sessionId: string; token?
   const [formError, setFormError] = useState("");
 
   useEffect(() => {
-    getSession(sessionId).then((s) => {
-      if (!s) {
-        setStage("invalid");
-        return;
-      }
-      setSession(s);
-      if (s.status === "ended") {
-        setStage("ended");
-        return;
-      }
-      if (token && s.qrToken !== token) {
-        setStage("expired");
-        return;
-      }
-      setStage("form");
-    });
+    const qs = token ? `?t=${encodeURIComponent(token)}` : "";
+    fetch(`/api/attend/${sessionId}${qs}`)
+      .then((r) => r.json())
+      .then((body: { status: string; session?: PublicSessionInfo }) => {
+        if (body.status === "ok" && body.session) {
+          setSession(body.session);
+          setStage("form");
+        } else if (body.status === "ended") {
+          setStage("ended");
+        } else if (body.status === "expired") {
+          setStage("expired");
+        } else {
+          setStage("invalid");
+        }
+      })
+      .catch(() => setStage("invalid"));
   }, [sessionId, token]);
 
-  // Live geofence check for STRICT sessions
+  // Live geofence check for STRICT sessions — UX feedback only; the API
+  // route re-validates authoritatively on submit.
   useEffect(() => {
     if (!session || session.mode !== "STRICT" || !session.geofence) return;
 
@@ -64,7 +72,6 @@ export function AttendanceForm({ sessionId, token }: { sessionId: string; token?
   }, [session]);
 
   const requestLocation = async () => {
-    setLocating(true);
     try {
       const point = await getCurrentLocation();
       setLocation(point);
@@ -72,8 +79,6 @@ export function AttendanceForm({ sessionId, token }: { sessionId: string; token?
       if (session?.geofence) setDistance(haversineMeters(point, session.geofence.center));
     } catch (err) {
       if (err instanceof GeolocationError && err.code === "denied") setLocationDenied(true);
-    } finally {
-      setLocating(false);
     }
   };
 
@@ -138,28 +143,30 @@ export function AttendanceForm({ sessionId, token }: { sessionId: string; token?
     setFormError("");
     setSubmitting(true);
     try {
-      await submitAttendance({
-        sessionId: session.id,
-        lecturerId: session.lecturerId,
-        courseCode: session.courseCode,
-        regNumber: values["regNumber"] ?? "",
-        firstName: values["firstName"] ?? "",
-        surname: values["surname"] ?? "",
-        middleName: values["middleName"],
-        phone: values["phone"],
-        email: values["email"],
-        location: location ?? undefined,
-        distanceFromLecturerMeters: distance ?? undefined,
-        deviceFingerprint: getDeviceFingerprint(),
+      const fingerprint = await getBrowserFingerprint();
+      const res = await fetch(`/api/attend/${session.id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          qrToken: token,
+          regNumber: values["regNumber"] ?? "",
+          firstName: values["firstName"] ?? "",
+          surname: values["surname"] ?? "",
+          middleName: values["middleName"],
+          phone: values["phone"],
+          email: values["email"],
+          location: location ?? undefined,
+          fingerprint,
+        }),
       });
-      setStage("success");
-    } catch (err) {
-      console.error("Attendance submission error:", err);
-      if (err instanceof DuplicateAttendanceError) {
-        setFormError("You've already marked attendance for this session.");
-      } else {
-        setFormError("Something went wrong. Please try again.");
+      const body = await res.json();
+      if (!res.ok) {
+        setFormError(body.error ?? "Something went wrong. Please try again.");
+        return;
       }
+      setStage("success");
+    } catch {
+      setFormError("Something went wrong. Please try again.");
     } finally {
       setSubmitting(false);
     }
@@ -173,66 +180,34 @@ export function AttendanceForm({ sessionId, token }: { sessionId: string; token?
       </p>
 
       {isStrict && (
-        <div className="mt-4 rounded-lg border border-white/10 bg-slate-800/50 p-3.5 space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-text-secondary uppercase tracking-wider">
-              Location Verification
-            </span>
-            {location && (
-              <span className="text-xs text-text-secondary">
-                Target: Within {session.geofence!.radiusMeters}m
-              </span>
-            )}
-          </div>
-
+        <div className="mt-4 rounded-lg border border-white/10 bg-slate-800/50 p-3.5">
           {!location && !locationDenied && (
-            <Button type="button" onClick={requestLocation} loading={locating} variant="secondary" fullWidth>
+            <Button type="button" onClick={requestLocation} variant="secondary" fullWidth>
               <MapPin className="h-4 w-4" />
               Allow location access
             </Button>
           )}
-
           {locationDenied && (
-            <div className="space-y-2.5">
-              <p className="flex items-start gap-2 text-sm text-rose">
-                <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-                <span>Location permission denied. Please enable location access in your browser settings to proceed.</span>
-              </p>
-              <Button type="button" onClick={requestLocation} loading={locating} variant="secondary" fullWidth>
-                <RefreshCw className="h-4 w-4" />
-                Try requesting again
-              </Button>
-            </div>
+            <p className="flex items-center gap-2 text-sm text-rose">
+              <AlertCircle className="h-4 w-4 shrink-0" />
+              Location required for this session. Enable it in your browser settings.
+            </p>
           )}
-
           {location && !outOfRange && (
-            <div className="space-y-2.5">
-              <p className="flex items-center gap-2 text-sm text-emerald">
-                <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald" />
-                Location verified · ±{Math.round(location.accuracy)}m accuracy
-              </p>
-              <Button type="button" onClick={requestLocation} loading={locating} variant="ghost" fullWidth className="text-xs text-text-secondary hover:text-white min-h-[36px] md:min-h-[36px]">
-                <RefreshCw className="h-3 w-3 mr-1" />
-                Refresh location
-              </Button>
-            </div>
+            <p className="flex items-center gap-2 text-sm text-emerald">
+              <MapPin className="h-4 w-4 shrink-0" />
+              Location verified · ±{Math.round(location.accuracy)}m accuracy
+            </p>
           )}
-
           {location && outOfRange && (
-            <div className="space-y-2.5">
-              <motion.p
-                className="flex items-start gap-2 text-sm text-rose"
-                animate={{ x: [0, -4, 4, -4, 0] }}
-                transition={{ duration: 0.2 }}
-              >
-                <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-                <span>You are {formatDistance(distance!)} away. Move closer to the classroom.</span>
-              </motion.p>
-              <Button type="button" onClick={requestLocation} loading={locating} variant="secondary" fullWidth>
-                <RefreshCw className="h-4 w-4 mr-1" />
-                Refresh location
-              </Button>
-            </div>
+            <motion.p
+              className="flex items-center gap-2 text-sm text-rose"
+              animate={{ x: [0, -4, 4, -4, 0] }}
+              transition={{ duration: 0.2 }}
+            >
+              <AlertCircle className="h-4 w-4 shrink-0" />
+              You are {formatDistance(distance!)} away. Move closer.
+            </motion.p>
           )}
         </div>
       )}

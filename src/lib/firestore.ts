@@ -10,8 +10,8 @@ import {
   query,
   where,
   orderBy,
-  runTransaction,
   increment,
+  writeBatch,
   limit as fsLimit,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
@@ -29,6 +29,10 @@ const coursesCol = collection(db, "courses");
 const sessionsCol = collection(db, "sessions");
 const recordsCol = collection(db, "attendanceRecords");
 
+function rosterCol(courseId: string) {
+  return collection(db, "courses", courseId, "roster");
+}
+
 // ---------- Courses ----------
 
 export async function createCourse(
@@ -40,7 +44,6 @@ export async function createCourse(
     lecturerId,
     code: code.toUpperCase(),
     name,
-    roster: [] as RosterStudent[],
     rosterCount: 0,
     createdAt: Date.now(),
   });
@@ -53,14 +56,38 @@ export async function getCourses(lecturerId: string): Promise<Course[]> {
   return snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Course, "id">) }));
 }
 
+/**
+ * Roster lives in a `courses/{courseId}/roster/{regNumber}` subcollection
+ * (doc ID = reg number, so lookups during attendance validation are a
+ * single `get()` rather than a query). Firestore batches cap at 500 writes,
+ * so large rosters are chunked.
+ */
 export async function uploadRoster(courseId: string, roster: RosterStudent[]) {
-  await updateDoc(doc(coursesCol, courseId), {
-    roster,
-    rosterCount: roster.length,
-  });
+  const CHUNK_SIZE = 450; // leave headroom under the 500 write-per-batch cap
+  for (let i = 0; i < roster.length; i += CHUNK_SIZE) {
+    const chunk = roster.slice(i, i + CHUNK_SIZE);
+    const batch = writeBatch(db);
+    chunk.forEach((student) => {
+      const ref = doc(rosterCol(courseId), student.regNumber.toUpperCase());
+      batch.set(ref, student);
+    });
+    await batch.commit();
+  }
+  await updateDoc(doc(coursesCol, courseId), { rosterCount: roster.length });
+}
+
+export async function getRoster(courseId: string): Promise<RosterStudent[]> {
+  const snap = await getDocs(rosterCol(courseId));
+  return snap.docs.map((d) => d.data() as RosterStudent);
 }
 
 export async function deleteCourse(courseId: string) {
+  const rosterSnap = await getDocs(rosterCol(courseId));
+  if (!rosterSnap.empty) {
+    const batch = writeBatch(db);
+    rosterSnap.docs.forEach((d) => batch.delete(d.ref));
+    await batch.commit();
+  }
   await deleteDoc(doc(coursesCol, courseId));
 }
 
@@ -80,23 +107,14 @@ interface CreateSessionInput {
 }
 
 export async function createSession(input: CreateSessionInput): Promise<string> {
-  const data: Record<string, unknown> = {
+  const ref = await addDoc(sessionsCol, {
     ...input,
     qrToken: generateQrToken(),
     qrTokenUpdatedAt: Date.now(),
     status: "active",
     createdAt: Date.now(),
     studentsMarked: 0,
-  };
-  
-  // Remove undefined fields so Firestore doesn't throw unsupported field errors
-  Object.keys(data).forEach((key) => {
-    if (data[key] === undefined) {
-      delete data[key];
-    }
   });
-
-  const ref = await addDoc(sessionsCol, data);
   return ref.id;
 }
 
@@ -149,79 +167,11 @@ export async function listSessions(
 }
 
 // ---------- Attendance records ----------
-
-interface SubmitAttendanceInput {
-  sessionId: string;
-  lecturerId: string;
-  courseCode: string;
-  regNumber: string;
-  firstName: string;
-  surname: string;
-  middleName?: string;
-  phone?: string;
-  email?: string;
-  location?: AttendanceRecord["location"];
-  distanceFromLecturerMeters?: number;
-  deviceFingerprint: string;
-}
-
-export class DuplicateAttendanceError extends Error {
-  constructor() {
-    super("You've already marked attendance for this session.");
-  }
-}
-
-/**
- * Runs as a transaction so two near-simultaneous submits from the same
- * reg number can't both slip through — this is the "already marked
- * present" check from DESIGN.md §5.
- */
-export async function submitAttendance(input: SubmitAttendanceInput): Promise<void> {
-  const dupQuery = query(
-    recordsCol,
-    where("sessionId", "==", input.sessionId),
-    where("regNumber", "==", input.regNumber.trim().toUpperCase())
-  );
-  const dupSnap = await getDocs(dupQuery);
-  if (!dupSnap.empty) {
-    throw new DuplicateAttendanceError();
-  }
-
-  // Flag (not block) if this device already marked someone else present
-  // in this session.
-  const deviceQuery = query(
-    recordsCol,
-    where("sessionId", "==", input.sessionId),
-    where("deviceFingerprint", "==", input.deviceFingerprint)
-  );
-  const deviceSnap = await getDocs(deviceQuery);
-  const flagged = !deviceSnap.empty;
-
-  await runTransaction(db, async (tx) => {
-    const newRecordRef = doc(recordsCol);
-    tx.set(newRecordRef, {
-      sessionId: input.sessionId,
-      lecturerId: input.lecturerId,
-      courseCode: input.courseCode,
-      regNumber: input.regNumber.trim().toUpperCase(),
-      firstName: input.firstName.trim(),
-      surname: input.surname.trim(),
-      middleName: input.middleName?.trim() ?? "",
-      phone: input.phone ?? "",
-      email: input.email ?? "",
-      location: input.location ?? null,
-      distanceFromLecturerMeters: input.distanceFromLecturerMeters ?? null,
-      deviceFingerprint: input.deviceFingerprint,
-      flagged,
-      flagReason: flagged ? "Device already used for another student in this session" : "",
-      markedManually: false,
-      submittedAt: Date.now(),
-    });
-
-    const sessionRef = doc(sessionsCol, input.sessionId);
-    tx.update(sessionRef, { studentsMarked: increment(1) });
-  });
-}
+// Student submissions no longer write here directly from the client — see
+// src/app/api/attend/[sessionId]/route.ts, which validates server-side via
+// firebase-admin and is the only writer for anonymous student submissions.
+// The functions below are for the authenticated lecturer's own actions
+// (manual add, remove, flag) against records they own.
 
 export async function markAttendanceManually(input: {
   sessionId: string;
@@ -269,6 +219,10 @@ export async function removeAttendanceRecord(recordId: string, sessionId: string
 
 export async function flagAttendanceRecord(recordId: string, reason: string) {
   await updateDoc(doc(recordsCol, recordId), { flagged: true, flagReason: reason });
+}
+
+export async function unflagAttendanceRecord(recordId: string) {
+  await updateDoc(doc(recordsCol, recordId), { flagged: false, flagReason: "" });
 }
 
 export async function getAllRecordsForLecturer(

@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Plus, Upload, Trash2, BookOpen } from "lucide-react";
+import Papa from "papaparse";
+import { Plus, Upload, Trash2, BookOpen, Users } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -9,30 +10,23 @@ import { Modal } from "@/components/ui/Modal";
 import { Spinner } from "@/components/ui/Spinner";
 import { notify } from "@/components/ui/Toast";
 import { useAuth } from "@/lib/auth-context";
-import { getCourses, createCourse, uploadRoster, deleteCourse } from "@/lib/firestore";
+import { getCourses, createCourse, uploadRoster, deleteCourse, getRoster } from "@/lib/firestore";
 import type { Course, RosterStudent } from "@/types";
 
 function parseRosterCsv(text: string): RosterStudent[] {
-  const lines = text.trim().split(/\r?\n/);
-  const [header, ...rows] = lines;
-  const cols = header.toLowerCase().split(",").map((c) => c.trim());
-  const idx = {
-    regNumber: cols.indexOf("regnumber"),
-    firstName: cols.indexOf("firstname"),
-    lastName: cols.indexOf("lastname"),
-    email: cols.indexOf("email"),
-  };
-  return rows
-    .filter((r) => r.trim().length > 0)
-    .map((row) => {
-      const cells = row.split(",").map((c) => c.trim());
-      return {
-        regNumber: cells[idx.regNumber] ?? "",
-        firstName: cells[idx.firstName] ?? "",
-        lastName: cells[idx.lastName] ?? "",
-        email: idx.email >= 0 ? cells[idx.email] : undefined,
-      };
-    })
+  const { data } = Papa.parse<Record<string, string>>(text, {
+    header: true,
+    skipEmptyLines: true,
+    transformHeader: (h) => h.trim().toLowerCase(),
+  });
+
+  return data
+    .map((row) => ({
+      regNumber: (row.regnumber ?? "").trim(),
+      firstName: (row.firstname ?? "").trim(),
+      lastName: (row.lastname ?? "").trim(),
+      email: row.email?.trim() || undefined,
+    }))
     .filter((s) => s.regNumber);
 }
 
@@ -46,6 +40,23 @@ export function CourseList() {
   const [saving, setSaving] = useState(false);
   const [uploadingFor, setUploadingFor] = useState<string | null>(null);
   const fileInputs = useRef<Record<string, HTMLInputElement | null>>({});
+
+  const [viewingRosterFor, setViewingRosterFor] = useState<Course | null>(null);
+  const [roster, setRoster] = useState<RosterStudent[]>([]);
+  const [loadingRoster, setLoadingRoster] = useState(false);
+
+  const handleViewRoster = async (course: Course) => {
+    setViewingRosterFor(course);
+    setLoadingRoster(true);
+    try {
+      const list = await getRoster(course.id);
+      setRoster(list.sort((a, b) => a.lastName.localeCompare(b.lastName)));
+    } catch {
+      notify.error("Couldn't load roster");
+    } finally {
+      setLoadingRoster(false);
+    }
+  };
 
   const refresh = () => {
     if (!user) return;
@@ -134,7 +145,7 @@ export function CourseList() {
                 <button
                   onClick={() => handleDelete(c.id)}
                   aria-label="Delete course"
-                  className="shrink-0 rounded-md p-1.5 text-text-secondary hover:bg-rose/10 hover:text-rose"
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-text-secondary hover:bg-rose/10 hover:text-rose"
                 >
                   <Trash2 className="h-4 w-4" />
                 </button>
@@ -153,14 +164,22 @@ export function CourseList() {
                     e.target.value = "";
                   }}
                 />
-                <Button
-                  variant="secondary"
-                  loading={uploadingFor === c.id}
-                  onClick={() => fileInputs.current[c.id]?.click()}
-                >
-                  <Upload className="h-4 w-4" />
-                  Upload roster
-                </Button>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant="secondary"
+                    loading={uploadingFor === c.id}
+                    onClick={() => fileInputs.current[c.id]?.click()}
+                  >
+                    <Upload className="h-4 w-4" />
+                    Upload roster
+                  </Button>
+                  {c.rosterCount > 0 && (
+                    <Button variant="ghost" onClick={() => handleViewRoster(c)}>
+                      <Users className="h-4 w-4" />
+                      View roster
+                    </Button>
+                  )}
+                </div>
                 <p className="mt-1.5 text-[11px] text-text-secondary">
                   💡 CSV format: regNumber,firstName,lastName,email
                 </p>
@@ -183,6 +202,30 @@ export function CourseList() {
             Save course
           </Button>
         </div>
+      </Modal>
+
+      <Modal
+        open={!!viewingRosterFor}
+        onClose={() => setViewingRosterFor(null)}
+        title={viewingRosterFor ? `${viewingRosterFor.code} roster` : undefined}
+      >
+        {loadingRoster ? (
+          <Spinner label="Loading roster..." />
+        ) : (
+          <div className="max-h-[50vh] space-y-1.5 overflow-y-auto">
+            {roster.map((s) => (
+              <div
+                key={s.regNumber}
+                className="flex items-center justify-between rounded-lg border border-white/5 bg-slate-800/50 px-3 py-2 text-sm"
+              >
+                <span className="text-white">
+                  {s.lastName} {s.firstName}
+                </span>
+                <span className="font-mono text-xs text-text-secondary">{s.regNumber}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </Modal>
     </div>
   );

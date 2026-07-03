@@ -39,7 +39,7 @@ export function Modal({
               <button
                 onClick={onClose}
                 aria-label="Close"
-                className="ml-auto flex h-9 w-9 items-center justify-center rounded-full text-text-secondary hover:bg-white/5 hover:text-white"
+                className="ml-auto flex h-10 w-10 items-center justify-center rounded-full text-text-secondary hover:bg-white/5 hover:text-white"
               >
                 <X className="h-5 w-5" />
               </button>

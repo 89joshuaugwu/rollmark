@@ -17,14 +17,16 @@ export function Slider({ label, valueLabel, className, ...props }: SliderProps) 
           {valueLabel && <span className="text-sm font-semibold text-emerald">{valueLabel}</span>}
         </div>
       )}
-      <input
-        type="range"
-        className={cn(
-          "h-2 w-full cursor-pointer appearance-none rounded-full bg-slate-700 accent-emerald",
-          className
-        )}
-        {...props}
-      />
+      <div className="flex items-center py-2">
+        <input
+          type="range"
+          className={cn(
+            "rollmark-slider h-2 w-full cursor-pointer appearance-none rounded-full bg-slate-700 accent-emerald",
+            className
+          )}
+          {...props}
+        />
+      </div>
     </div>
   );
 }

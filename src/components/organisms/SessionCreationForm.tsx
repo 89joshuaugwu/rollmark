@@ -139,8 +139,7 @@ export function SessionCreationForm() {
       });
       notify.success("Session created");
       router.push(`/dashboard/sessions/${sessionId}`);
-    } catch (err) {
-      console.error("Session creation error:", err);
+    } catch {
       notify.error("Couldn't create the session. Try again.");
     } finally {
       setSubmitting(false);
@@ -187,7 +186,7 @@ export function SessionCreationForm() {
             <div>
               <p className="font-medium text-white">Permissive (QR only)</p>
               <p className="text-sm text-text-secondary">
-                Share the QR anywhere. A rotating code every 30s + device fingerprinting are your
+                Share the QR anywhere. A rotating code every 15s + device fingerprinting are your
                 proxy defense.
               </p>
             </div>
