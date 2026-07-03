@@ -139,7 +139,8 @@ export function SessionCreationForm() {
       });
       notify.success("Session created");
       router.push(`/dashboard/sessions/${sessionId}`);
-    } catch {
+    } catch (err) {
+      console.error("Session creation error:", err);
       notify.error("Couldn't create the session. Try again.");
     } finally {
       setSubmitting(false);
