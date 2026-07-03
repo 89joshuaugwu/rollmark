@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { MapPin, CheckCircle2, AlertCircle } from "lucide-react";
+import { MapPin, CheckCircle2, AlertCircle, RefreshCw } from "lucide-react";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { Confetti } from "@/components/ui/Confetti";
@@ -20,6 +20,7 @@ export function AttendanceForm({ sessionId, token }: { sessionId: string; token?
 
   const [location, setLocation] = useState<GeoPoint | null>(null);
   const [locationDenied, setLocationDenied] = useState(false);
+  const [locating, setLocating] = useState(false);
   const [distance, setDistance] = useState<number | null>(null);
 
   const [values, setValues] = useState<Record<string, string>>({});
@@ -63,6 +64,7 @@ export function AttendanceForm({ sessionId, token }: { sessionId: string; token?
   }, [session]);
 
   const requestLocation = async () => {
+    setLocating(true);
     try {
       const point = await getCurrentLocation();
       setLocation(point);
@@ -70,6 +72,8 @@ export function AttendanceForm({ sessionId, token }: { sessionId: string; token?
       if (session?.geofence) setDistance(haversineMeters(point, session.geofence.center));
     } catch (err) {
       if (err instanceof GeolocationError && err.code === "denied") setLocationDenied(true);
+    } finally {
+      setLocating(false);
     }
   };
 
@@ -168,34 +172,66 @@ export function AttendanceForm({ sessionId, token }: { sessionId: string; token?
       </p>
 
       {isStrict && (
-        <div className="mt-4 rounded-lg border border-white/10 bg-slate-800/50 p-3.5">
+        <div className="mt-4 rounded-lg border border-white/10 bg-slate-800/50 p-3.5 space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-text-secondary uppercase tracking-wider">
+              Location Verification
+            </span>
+            {location && (
+              <span className="text-xs text-text-secondary">
+                Target: Within {session.geofence!.radiusMeters}m
+              </span>
+            )}
+          </div>
+
           {!location && !locationDenied && (
-            <Button type="button" onClick={requestLocation} variant="secondary" fullWidth>
+            <Button type="button" onClick={requestLocation} loading={locating} variant="secondary" fullWidth>
               <MapPin className="h-4 w-4" />
               Allow location access
             </Button>
           )}
+
           {locationDenied && (
-            <p className="flex items-center gap-2 text-sm text-rose">
-              <AlertCircle className="h-4 w-4 shrink-0" />
-              Location required for this session. Enable it in your browser settings.
-            </p>
+            <div className="space-y-2.5">
+              <p className="flex items-start gap-2 text-sm text-rose">
+                <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                <span>Location permission denied. Please enable location access in your browser settings to proceed.</span>
+              </p>
+              <Button type="button" onClick={requestLocation} loading={locating} variant="secondary" fullWidth>
+                <RefreshCw className="h-4 w-4" />
+                Try requesting again
+              </Button>
+            </div>
           )}
+
           {location && !outOfRange && (
-            <p className="flex items-center gap-2 text-sm text-emerald">
-              <MapPin className="h-4 w-4 shrink-0" />
-              Location verified · ±{Math.round(location.accuracy)}m accuracy
-            </p>
+            <div className="space-y-2.5">
+              <p className="flex items-center gap-2 text-sm text-emerald">
+                <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald" />
+                Location verified · ±{Math.round(location.accuracy)}m accuracy
+              </p>
+              <Button type="button" onClick={requestLocation} loading={locating} variant="ghost" fullWidth className="text-xs text-text-secondary hover:text-white min-h-[36px] md:min-h-[36px]">
+                <RefreshCw className="h-3 w-3 mr-1" />
+                Refresh location
+              </Button>
+            </div>
           )}
+
           {location && outOfRange && (
-            <motion.p
-              className="flex items-center gap-2 text-sm text-rose"
-              animate={{ x: [0, -4, 4, -4, 0] }}
-              transition={{ duration: 0.2 }}
-            >
-              <AlertCircle className="h-4 w-4 shrink-0" />
-              You are {formatDistance(distance!)} away. Move closer.
-            </motion.p>
+            <div className="space-y-2.5">
+              <motion.p
+                className="flex items-start gap-2 text-sm text-rose"
+                animate={{ x: [0, -4, 4, -4, 0] }}
+                transition={{ duration: 0.2 }}
+              >
+                <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                <span>You are {formatDistance(distance!)} away. Move closer to the classroom.</span>
+              </motion.p>
+              <Button type="button" onClick={requestLocation} loading={locating} variant="secondary" fullWidth>
+                <RefreshCw className="h-4 w-4 mr-1" />
+                Refresh location
+              </Button>
+            </div>
           )}
         </div>
       )}

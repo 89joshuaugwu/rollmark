@@ -186,7 +186,7 @@ export function SessionCreationForm() {
             <div>
               <p className="font-medium text-white">Permissive (QR only)</p>
               <p className="text-sm text-text-secondary">
-                Share the QR anywhere. A rotating code every 15s + device fingerprinting are your
+                Share the QR anywhere. A rotating code every 30s + device fingerprinting are your
                 proxy defense.
               </p>
             </div>

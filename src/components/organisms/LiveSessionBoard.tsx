@@ -64,7 +64,7 @@ export function LiveSessionBoard({ sessionId }: { sessionId: string }) {
     return () => unsub();
   }, [sessionId]);
 
-  // Auto-rotate the QR token every 15s while the session is active.
+  // Auto-rotate the QR token every 30s while the session is active.
   useEffect(() => {
     if (!session || session.status !== "active") return;
     const ms = msUntilNextRotation(session.qrTokenUpdatedAt);
