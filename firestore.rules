@@ -29,12 +29,18 @@ service cloud.firestore {
     }
 
     // Sessions must be readable by anonymous students (to load /attend/[id])
-    // but only writable by the owning lecturer.
+    // but only writable by the owning lecturer, except students can increment
+    // the studentsMarked count when marking attendance.
     match /sessions/{sessionId} {
       allow get: if true; // anyone with the link can load session metadata
       allow list: if isSignedIn();
       allow create: if isSignedIn() && request.resource.data.lecturerId == request.auth.uid;
-      allow update, delete: if isOwner(resource.data.lecturerId);
+      allow update: if isOwner(resource.data.lecturerId)
+        || (
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['studentsMarked'])
+          && request.resource.data.studentsMarked == resource.data.studentsMarked + 1
+        );
+      allow delete: if isOwner(resource.data.lecturerId);
     }
 
     // Attendance records: anonymous students can create their own record
