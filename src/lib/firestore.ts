@@ -80,14 +80,23 @@ interface CreateSessionInput {
 }
 
 export async function createSession(input: CreateSessionInput): Promise<string> {
-  const ref = await addDoc(sessionsCol, {
+  const data: Record<string, unknown> = {
     ...input,
     qrToken: generateQrToken(),
     qrTokenUpdatedAt: Date.now(),
     status: "active",
     createdAt: Date.now(),
     studentsMarked: 0,
+  };
+  
+  // Remove undefined fields so Firestore doesn't throw unsupported field errors
+  Object.keys(data).forEach((key) => {
+    if (data[key] === undefined) {
+      delete data[key];
+    }
   });
+
+  const ref = await addDoc(sessionsCol, data);
   return ref.id;
 }
 
