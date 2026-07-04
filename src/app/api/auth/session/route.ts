@@ -30,7 +30,12 @@ export async function POST(req: Request) {
       path: "/",
     });
     return res;
-  } catch {
+  } catch (err) {
+    // Logged server-side only — client still gets the generic message.
+    // Vercel Function Logs for /api/auth/session will now show the real
+    // Firebase Admin error (bad private key, project ID mismatch, clock
+    // skew, etc.) instead of just "Could not create session".
+    console.error("[/api/auth/session] session cookie creation failed:", err);
     return NextResponse.json({ error: "Could not create session" }, { status: 401 });
   }
 }
