@@ -52,21 +52,26 @@ async function ensureLecturerDoc(user: User): Promise<LecturerProfile> {
  * an httpOnly cookie so `middleware.ts` and `dashboard/layout.tsx` can
  * gate access server-side instead of only in the browser after hydration.
  */
-async function syncSessionCookie(user: User | null) {
-  try {
-    if (user) {
-      const idToken = await user.getIdToken();
-      await fetch("/api/auth/session", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ idToken }),
-      });
-    } else {
-      await fetch("/api/auth/session", { method: "DELETE" });
+async function syncSessionCookie(user: User | null): Promise<void> {
+  if (user) {
+    const idToken = await user.getIdToken();
+    const res = await fetch("/api/auth/session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ idToken }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      // Surfaced (not swallowed): without this, a failed cookie sync looks
+      // identical to a successful login from the UI's perspective — you get
+      // the success toast, then middleware silently bounces you back to
+      // /auth/lecturer-login because the httpOnly session cookie was never
+      // set. Throwing here lets the caller (signInEmail/signUpEmail/
+      // signInGoogle) catch it and show a real error instead.
+      throw new Error(body?.error ?? `Session sync failed (${res.status})`);
     }
-  } catch {
-    // Non-fatal: worst case the server-side gate falls back to redirecting
-    // to login, which is the safe direction to fail in.
+  } else {
+    await fetch("/api/auth/session", { method: "DELETE" });
   }
 }
 
@@ -81,7 +86,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (u) {
         const p = await ensureLecturerDoc(u);
         setProfile(p);
-        await syncSessionCookie(u);
+        try {
+          await syncSessionCookie(u);
+        } catch (err) {
+          // This background sync (distinct from the explicit call inside
+          // signInEmail/signUpEmail/signInGoogle) must not throw — it runs
+          // on every auth state change, including tab refreshes, with no
+          // page-level catch to surface it to. Log it so it still shows up
+          // in the browser console instead of failing invisibly.
+          console.error("Session cookie sync failed:", err);
+        }
       } else {
         setProfile(null);
       }
