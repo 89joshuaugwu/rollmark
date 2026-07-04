@@ -23,7 +23,7 @@ export function SessionCard({ session }: { session: AttendanceSession }) {
           </p>
           <p className="mt-1 text-xs text-text-secondary">
             {session.studentsMarked} student{session.studentsMarked === 1 ? "" : "s"} marked ·{" "}
-            {session.mode === "STRICT" ? "Geofenced" : "QR only"}
+            {session.requireGeofence ? "Geofenced" : "QR only"}
           </p>
         </div>
         <Badge status={session.status === "active" ? "active" : "ended"}>

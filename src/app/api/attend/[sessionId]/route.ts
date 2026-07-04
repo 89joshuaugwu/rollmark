@@ -21,7 +21,7 @@ export async function GET(
     return NextResponse.json({ status: "invalid" });
   }
 
-  const data = snap.data() as Omit<AttendanceSession, "id">;
+  const data = snap.data() as Record<string, unknown>;
 
   if (data.status === "ended") {
     return NextResponse.json({ status: "ended" });
@@ -30,13 +30,17 @@ export async function GET(
     return NextResponse.json({ status: "expired" });
   }
 
+  // Legacy-doc fallback — see the identical note in POST below.
+  const requireGeofence =
+    typeof data.requireGeofence === "boolean" ? data.requireGeofence : data.mode === "STRICT";
+
   return NextResponse.json({
     status: "ok",
     session: {
       id: snap.id,
       courseCode: data.courseCode,
       courseName: data.courseName,
-      mode: data.mode,
+      requireGeofence,
       fields: data.fields,
       geofence: data.geofence ?? null,
     },
@@ -83,7 +87,14 @@ export async function POST(
   if (!sessionSnap.exists) {
     return NextResponse.json({ error: "Session not found." }, { status: 404 });
   }
-  const session = sessionSnap.data() as Omit<AttendanceSession, "id">;
+  const session = sessionSnap.data() as Record<string, unknown> & Omit<AttendanceSession, "id" | "requireGeofence">;
+  // Legacy-doc fallback — pre-migration sessions have `mode` but no
+  // `requireGeofence`; this is the authoritative server-side check, so it
+  // must handle both shapes exactly like the client-side normalizer does.
+  const requireGeofence =
+    typeof session.requireGeofence === "boolean"
+      ? session.requireGeofence
+      : session.mode === "STRICT";
 
   if (session.status === "ended") {
     return NextResponse.json({ error: "This session has ended." }, { status: 409 });
@@ -97,10 +108,10 @@ export async function POST(
     );
   }
 
-  // 2. Geofence check (STRICT only) — authoritative. The client-side distance
-  // readout is UX feedback only; this is the real gate.
+  // 2. Geofence check (only when requireGeofence is on) — authoritative.
+  // The client-side distance readout is UX feedback only; this is the real gate.
   let distanceFromLecturerMeters: number | null = null;
-  if (session.mode === "STRICT" && session.geofence) {
+  if (requireGeofence && session.geofence) {
     if (!location || typeof location.lat !== "number" || typeof location.lng !== "number") {
       return NextResponse.json(
         { error: "Location required for this session. Enable it in your browser settings." },

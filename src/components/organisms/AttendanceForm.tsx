@@ -9,7 +9,7 @@ import { Confetti } from "@/components/ui/Confetti";
 import { getCurrentLocation, watchLocation, GeolocationError } from "@/lib/geolocation";
 import { getBrowserFingerprint } from "@/lib/fingerprint";
 import { haversineMeters, formatDistance } from "@/lib/utils";
-import type { GeoPoint, SessionField, SessionMode } from "@/types";
+import type { GeoPoint, SessionField } from "@/types";
 
 type Stage = "loading" | "invalid" | "expired" | "ended" | "form" | "success";
 
@@ -17,7 +17,7 @@ interface PublicSessionInfo {
   id: string;
   courseCode: string;
   courseName: string;
-  mode: SessionMode;
+  requireGeofence: boolean;
   fields: SessionField[];
   geofence: { center: GeoPoint; radiusMeters: number } | null;
 }
@@ -53,10 +53,10 @@ export function AttendanceForm({ sessionId, token }: { sessionId: string; token?
       .catch(() => setStage("invalid"));
   }, [sessionId, token]);
 
-  // Live geofence check for STRICT sessions — UX feedback only; the API
-  // route re-validates authoritatively on submit.
+  // Live geofence check when geofencing is required — UX feedback only; the
+  // API route re-validates authoritatively on submit.
   useEffect(() => {
-    if (!session || session.mode !== "STRICT" || !session.geofence) return;
+    if (!session || !session.requireGeofence || !session.geofence) return;
 
     const unsub = watchLocation(
       (point) => {
@@ -127,8 +127,8 @@ export function AttendanceForm({ sessionId, token }: { sessionId: string; token?
 
   if (!session) return null;
   const visibleFields = session.fields.filter((f) => f.requirement !== "off");
-  const isStrict = session.mode === "STRICT" && !!session.geofence;
-  const outOfRange = isStrict && distance !== null && distance > session.geofence!.radiusMeters;
+  const geofenceActive = session.requireGeofence && !!session.geofence;
+  const outOfRange = geofenceActive && distance !== null && distance > session.geofence!.radiusMeters;
 
   const handleChange = (key: string, v: string) => setValues((prev) => ({ ...prev, [key]: v }));
 
@@ -136,7 +136,7 @@ export function AttendanceForm({ sessionId, token }: { sessionId: string; token?
     .filter((f) => f.requirement === "required")
     .every((f) => (values[f.key] ?? "").trim().length > 0);
 
-  const canSubmit = allRequiredFilled && (!isStrict || (location && !outOfRange)) && !submitting;
+  const canSubmit = allRequiredFilled && (!geofenceActive || (location && !outOfRange)) && !submitting;
 
   const handleSubmit = async () => {
     if (!canSubmit) return;
@@ -179,7 +179,7 @@ export function AttendanceForm({ sessionId, token }: { sessionId: string; token?
         {session.courseCode} — {session.courseName}
       </p>
 
-      {isStrict && (
+      {geofenceActive && (
         <div className="mt-4 rounded-lg border border-white/10 bg-slate-800/50 p-3.5">
           {!location && !locationDenied && (
             <Button type="button" onClick={requestLocation} variant="secondary" fullWidth>

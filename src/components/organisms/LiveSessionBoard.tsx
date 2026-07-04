@@ -168,7 +168,7 @@ export function LiveSessionBoard({ sessionId }: { sessionId: string }) {
         <QRDisplay value={qrValue} qrTokenUpdatedAt={session.qrTokenUpdatedAt} />
       </div>
 
-      {session.mode === "STRICT" && session.geofence && (
+      {session.requireGeofence && session.geofence && (
         <div className="mb-6 flex flex-wrap items-center gap-2">
           <LocationPill point={session.geofence.center} />
           <span className="text-xs text-text-secondary">

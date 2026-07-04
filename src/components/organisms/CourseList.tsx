@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { Spinner } from "@/components/ui/Spinner";
 import { notify } from "@/components/ui/Toast";
+import { ShareLinkSettings } from "@/components/molecules/ShareLinkSettings";
 import { useAuth } from "@/lib/auth-context";
 import { getCourses, createCourse, uploadRoster, deleteCourse, getRoster } from "@/lib/firestore";
 import type { Course, RosterStudent } from "@/types";
@@ -179,6 +180,14 @@ export function CourseList() {
                       View roster
                     </Button>
                   )}
+                  <ShareLinkSettings
+                    course={c}
+                    onSlugBackfilled={(slug) =>
+                      setCourses((prev) =>
+                        prev.map((course) => (course.id === c.id ? { ...course, shareSlug: slug } : course))
+                      )
+                    }
+                  />
                 </div>
                 <p className="mt-1.5 text-[11px] text-text-secondary">
                   💡 CSV format: regNumber,firstName,lastName,email

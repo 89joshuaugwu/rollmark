@@ -20,9 +20,9 @@ import type {
   AttendanceRecord,
   AttendanceSession,
   Course,
+  Geofence,
   RosterStudent,
   SessionField,
-  SessionMode,
 } from "@/types";
 
 const coursesCol = collection(db, "courses");
@@ -31,6 +31,43 @@ const recordsCol = collection(db, "attendanceRecords");
 
 function rosterCol(courseId: string) {
   return collection(db, "courses", courseId, "roster");
+}
+
+/**
+ * Normalizes a raw session doc into the current shape. Handles two legacy
+ * cases from before the mode -> requireGeofence migration:
+ *  - old docs have `mode: "STRICT" | "PERMISSIVE"` and no `requireGeofence`
+ *  - new docs have `requireGeofence` directly
+ * so existing live sessions in Firestore don't need a manual data migration.
+ */
+function normalizeSession(id: string, data: Record<string, unknown>): AttendanceSession {
+  const legacyMode = data.mode as string | undefined;
+  const requireGeofence =
+    typeof data.requireGeofence === "boolean" ? data.requireGeofence : legacyMode === "STRICT";
+  return {
+    id,
+    lecturerId: data.lecturerId as string,
+    courseId: data.courseId as string,
+    courseCode: data.courseCode as string,
+    courseName: data.courseName as string,
+    requireGeofence,
+    fields: data.fields as SessionField[],
+    date: data.date as string,
+    startTime: data.startTime as string,
+    endTime: data.endTime as string,
+    geofence: data.geofence as Geofence | undefined,
+    qrToken: data.qrToken as string,
+    qrTokenUpdatedAt: data.qrTokenUpdatedAt as number,
+    status: data.status as "active" | "ended",
+    createdAt: data.createdAt as number,
+    studentsMarked: (data.studentsMarked as number) ?? 0,
+  };
+}
+
+function generateShareSlug(code: string): string {
+  const base = code.trim().toLowerCase().replace(/[^a-z0-9]/g, "") || "course";
+  const suffix = Math.random().toString(36).slice(2, 6);
+  return `${base}-${suffix}`;
 }
 
 // ---------- Courses ----------
@@ -45,6 +82,8 @@ export async function createCourse(
     code: code.toUpperCase(),
     name,
     rosterCount: 0,
+    shareSlug: generateShareSlug(code),
+    shareGeofenceEnabled: false,
     createdAt: Date.now(),
   });
   return ref.id;
@@ -91,6 +130,34 @@ export async function deleteCourse(courseId: string) {
   await deleteDoc(doc(coursesCol, courseId));
 }
 
+/**
+ * Updates the course's static share-link settings. `geofence` is optional
+ * and, per the Firestore-hates-`undefined` lesson from the PERMISSIVE-mode
+ * bug, is only included in the update payload when actually provided —
+ * never spread in as an explicit `undefined` value.
+ */
+/**
+ * Backfill for courses created before the share-link feature existed —
+ * `createCourse` always sets `shareSlug` now, but older course docs won't
+ * have one. Called lazily from CourseList the first time a lecturer opens
+ * the share settings for an old course.
+ */
+export async function ensureCourseShareSlug(courseId: string, code: string): Promise<string> {
+  const slug = generateShareSlug(code);
+  await updateDoc(doc(coursesCol, courseId), { shareSlug: slug });
+  return slug;
+}
+
+export async function setCourseShareSettings(
+  courseId: string,
+  settings: { enabled: boolean; geofence?: Geofence }
+) {
+  await updateDoc(doc(coursesCol, courseId), {
+    shareGeofenceEnabled: settings.enabled,
+    ...(settings.geofence !== undefined ? { shareGeofence: settings.geofence } : {}),
+  });
+}
+
 // ---------- Sessions ----------
 
 interface CreateSessionInput {
@@ -98,12 +165,12 @@ interface CreateSessionInput {
   courseId: string;
   courseCode: string;
   courseName: string;
-  mode: SessionMode;
+  requireGeofence: boolean;
   fields: SessionField[];
   date: string;
   startTime: string;
   endTime: string;
-  geofence?: AttendanceSession["geofence"];
+  geofence?: Geofence;
 }
 
 export async function createSession(input: CreateSessionInput): Promise<string> {
@@ -127,14 +194,14 @@ export function subscribeToSession(
       cb(null);
       return;
     }
-    cb({ id: snap.id, ...(snap.data() as Omit<AttendanceSession, "id">) });
+    cb(normalizeSession(snap.id, snap.data()));
   });
 }
 
 export async function getSession(sessionId: string): Promise<AttendanceSession | null> {
   const snap = await getDoc(doc(sessionsCol, sessionId));
   if (!snap.exists()) return null;
-  return { id: snap.id, ...(snap.data() as Omit<AttendanceSession, "id">) };
+  return normalizeSession(snap.id, snap.data());
 }
 
 export async function rotateQrToken(sessionId: string) {
@@ -144,10 +211,7 @@ export async function rotateQrToken(sessionId: string) {
   });
 }
 
-export async function updateGeofence(
-  sessionId: string,
-  geofence: AttendanceSession["geofence"]
-) {
+export async function updateGeofence(sessionId: string, geofence: Geofence) {
   await updateDoc(doc(sessionsCol, sessionId), { geofence });
 }
 
@@ -163,7 +227,7 @@ export async function listSessions(
   if (opts?.courseId) clauses.push(where("courseId", "==", opts.courseId));
   const q = query(sessionsCol, ...clauses, orderBy("createdAt", "desc"), fsLimit(opts?.max ?? 50));
   const snap = await getDocs(q);
-  return snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<AttendanceSession, "id">) }));
+  return snap.docs.map((d) => normalizeSession(d.id, d.data()));
 }
 
 // ---------- Attendance records ----------

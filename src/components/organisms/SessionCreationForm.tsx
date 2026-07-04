@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Plus, MapPin, RefreshCw } from "lucide-react";
 import { Input, Select } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
+import { Toggle } from "@/components/ui/Toggle";
 import { FieldToggle } from "@/components/molecules/FieldToggle";
 import { GeofenceRadius } from "@/components/molecules/GeofenceRadius";
 import { LocationPill } from "@/components/molecules/LocationPill";
@@ -13,7 +14,7 @@ import { useAuth } from "@/lib/auth-context";
 import { getCourses, createCourse, createSession } from "@/lib/firestore";
 import { getCurrentLocation, GeolocationError } from "@/lib/geolocation";
 import { DEFAULT_SESSION_FIELDS } from "@/types";
-import type { Course, FieldRequirement, GeoPoint, SessionField, SessionMode } from "@/types";
+import type { Course, FieldRequirement, GeoPoint, SessionField } from "@/types";
 
 export function SessionCreationForm() {
   const router = useRouter();
@@ -25,7 +26,7 @@ export function SessionCreationForm() {
   const [newCourseName, setNewCourseName] = useState("");
   const [showNewCourse, setShowNewCourse] = useState(false);
 
-  const [mode, setMode] = useState<SessionMode>("PERMISSIVE");
+  const [requireGeofence, setRequireGeofence] = useState(false);
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [startTime, setStartTime] = useState("09:00");
   const [endTime, setEndTime] = useState("11:00");
@@ -57,6 +58,8 @@ export function SessionCreationForm() {
       code: newCourseCode.toUpperCase(),
       name: newCourseName,
       rosterCount: 0,
+      shareSlug: "",
+      shareGeofenceEnabled: false,
       createdAt: Date.now(),
     };
     setCourses((prev) => [course, ...prev]);
@@ -115,8 +118,8 @@ export function SessionCreationForm() {
       notify.error("Select or add a course first");
       return;
     }
-    if (mode === "STRICT" && !location) {
-      notify.error("Capture your location for a strict session");
+    if (requireGeofence && !location) {
+      notify.error("Capture your location first — geofencing is on for this session");
       return;
     }
 
@@ -127,18 +130,15 @@ export function SessionCreationForm() {
         courseId: course.id,
         courseCode: course.code,
         courseName: course.name,
-        mode,
+        requireGeofence,
         fields,
         date,
         startTime: `${date}T${startTime}:00`,
         endTime: `${date}T${endTime}:00`,
         // Firestore's client SDK throws on any field set to `undefined`
-        // ("Unsupported field value: undefined") — so for PERMISSIVE mode
-        // the key must be omitted entirely, not set to undefined. That was
-        // the actual cause of "Couldn't create the session": PERMISSIVE
-        // always crashed here before the write ever reached Firestore's
-        // network layer, which is also why nothing showed in Vercel logs.
-        ...(mode === "STRICT" && location
+        // ("Unsupported field value: undefined") — so when geofencing is
+        // off, the key must be omitted entirely, not set to undefined.
+        ...(requireGeofence && location
           ? { geofence: { center: location, radiusMeters: radius } }
           : {}),
       });
@@ -154,49 +154,22 @@ export function SessionCreationForm() {
 
   return (
     <div className="space-y-6 pb-24">
-      {/* Mode */}
+      {/* Security */}
       <div>
-        <h3 className="mb-3 text-sm font-semibold text-white">Select mode</h3>
+        <h3 className="mb-3 text-sm font-semibold text-white">Security</h3>
         <div className="space-y-2.5">
-          <label
-            className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3.5 ${
-              mode === "STRICT" ? "border-emerald bg-emerald/5" : "border-white/10"
-            }`}
-          >
-            <input
-              type="radio"
-              name="mode"
-              className="mt-1 accent-emerald"
-              checked={mode === "STRICT"}
-              onChange={() => setMode("STRICT")}
-            />
-            <div>
-              <p className="font-medium text-white">Strict (geofencing required)</p>
-              <p className="text-sm text-text-secondary">
-                Requires your in-class location. Best for preventing proxy attendance.
-              </p>
-            </div>
-          </label>
-          <label
-            className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3.5 ${
-              mode === "PERMISSIVE" ? "border-emerald bg-emerald/5" : "border-white/10"
-            }`}
-          >
-            <input
-              type="radio"
-              name="mode"
-              className="mt-1 accent-emerald"
-              checked={mode === "PERMISSIVE"}
-              onChange={() => setMode("PERMISSIVE")}
-            />
-            <div>
-              <p className="font-medium text-white">Permissive (QR only)</p>
-              <p className="text-sm text-text-secondary">
-                Share the QR anywhere. A rotating code every 60s + device fingerprinting are your
-                proxy defense.
-              </p>
-            </div>
-          </label>
+          <Toggle
+            checked={requireGeofence}
+            onChange={setRequireGeofence}
+            label="Require location to check in"
+            description="Students must be physically near you to mark attendance. Best defense against proxy attendance."
+          />
+          <div className="rounded-lg border border-white/10 p-3.5">
+            <p className="text-sm text-text-secondary">
+              🔄 A rotating QR code every 60s and silent device fingerprinting are always on,
+              regardless of this toggle — they need no setup.
+            </p>
+          </div>
         </div>
       </div>
 
@@ -308,7 +281,7 @@ export function SessionCreationForm() {
       </div>
 
       {/* Geofence */}
-      {mode === "STRICT" && (
+      {requireGeofence && (
         <div>
           <h3 className="mb-3 text-sm font-semibold text-white">Geofence</h3>
           <div className="space-y-3">

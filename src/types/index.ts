@@ -1,5 +1,3 @@
-export type SessionMode = "STRICT" | "PERMISSIVE";
-
 export type FieldRequirement = "required" | "optional" | "off";
 
 export interface SessionField {
@@ -24,21 +22,29 @@ export interface GeoPoint {
   accuracy: number;
 }
 
+export interface Geofence {
+  center: GeoPoint;
+  radiusMeters: number;
+}
+
 export interface AttendanceSession {
   id: string;
   lecturerId: string;
   courseId: string;
   courseCode: string;
   courseName: string;
-  mode: SessionMode;
+  // Replaces the old `mode: "STRICT" | "PERMISSIVE"` enum. Every usage of
+  // `mode` across the app only ever checked one thing — whether geofencing
+  // was enforced at attendance-marking time. QR rotation and fingerprinting
+  // always ran regardless of mode, so the enum was hiding a single boolean.
+  // Kept as a plain flag so it composes independently with the course-level
+  // share-link geofence toggle instead of needing a third enum value.
+  requireGeofence: boolean;
   fields: SessionField[];
   date: string; // ISO date
   startTime: string; // ISO datetime
   endTime: string; // ISO datetime
-  geofence?: {
-    center: GeoPoint;
-    radiusMeters: number;
-  };
+  geofence?: Geofence;
   qrToken: string;
   qrTokenUpdatedAt: number;
   status: "active" | "ended";
@@ -72,6 +78,13 @@ export interface Course {
   code: string;
   name: string;
   rosterCount: number;
+  // Static share-link fields (see /s/[slug]). Lives on the course, not the
+  // session, since the whole point is a link the lecturer posts once to the
+  // class group forever — it always resolves to whichever session on this
+  // course is currently live, so it never needs regenerating per class.
+  shareSlug: string;
+  shareGeofenceEnabled: boolean;
+  shareGeofence?: Geofence;
   createdAt: number;
 }
 
