@@ -2,13 +2,13 @@
  * Rotating QR token logic.
  *
  * The QR displayed on the lecturer's screen encodes {sessionId, token}.
- * The token rotates every 15s so a screenshot shared in a WhatsApp group
- * chat goes stale almost immediately — this is the core anti-proxy
+ * The token rotates every 60s so a screenshot shared in a WhatsApp group
+ * chat goes stale within a minute — this is the core anti-proxy
  * mechanism for PERMISSIVE mode sessions (STRICT mode adds geofencing
  * on top of this).
  */
 
-const ROTATION_MS = 15_000;
+const ROTATION_MS = 60_000;
 
 export function generateQrToken(): string {
   const bytes = new Uint8Array(9);

@@ -132,14 +132,20 @@ export function SessionCreationForm() {
         date,
         startTime: `${date}T${startTime}:00`,
         endTime: `${date}T${endTime}:00`,
-        geofence:
-          mode === "STRICT" && location
-            ? { center: location, radiusMeters: radius }
-            : undefined,
+        // Firestore's client SDK throws on any field set to `undefined`
+        // ("Unsupported field value: undefined") — so for PERMISSIVE mode
+        // the key must be omitted entirely, not set to undefined. That was
+        // the actual cause of "Couldn't create the session": PERMISSIVE
+        // always crashed here before the write ever reached Firestore's
+        // network layer, which is also why nothing showed in Vercel logs.
+        ...(mode === "STRICT" && location
+          ? { geofence: { center: location, radiusMeters: radius } }
+          : {}),
       });
       notify.success("Session created");
       router.push(`/dashboard/sessions/${sessionId}`);
-    } catch {
+    } catch (err) {
+      console.error("createSession failed:", err);
       notify.error("Couldn't create the session. Try again.");
     } finally {
       setSubmitting(false);
@@ -186,7 +192,7 @@ export function SessionCreationForm() {
             <div>
               <p className="font-medium text-white">Permissive (QR only)</p>
               <p className="text-sm text-text-secondary">
-                Share the QR anywhere. A rotating code every 15s + device fingerprinting are your
+                Share the QR anywhere. A rotating code every 60s + device fingerprinting are your
                 proxy defense.
               </p>
             </div>
