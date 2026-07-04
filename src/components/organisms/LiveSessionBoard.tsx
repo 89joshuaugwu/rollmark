@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { Badge } from "@/components/ui/Badge";
 import { notify } from "@/components/ui/Toast";
+import { useAuth } from "@/lib/auth-context";
 import {
   subscribeToSession,
   subscribeToRecords,
@@ -27,6 +28,7 @@ import type { AttendanceRecord, AttendanceSession } from "@/types";
 
 export function LiveSessionBoard({ sessionId }: { sessionId: string }) {
   const router = useRouter();
+  const { user } = useAuth();
   const [session, setSession] = useState<AttendanceSession | null>(null);
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [showManualAdd, setShowManualAdd] = useState(false);
@@ -42,12 +44,24 @@ export function LiveSessionBoard({ sessionId }: { sessionId: string }) {
   const knownRecordIds = useRef<Set<string>>(new Set());
   const isFirstRecordsLoad = useRef(true);
 
+  // Both listeners wait on `user` (populated once Firebase Auth's client
+  // SDK finishes restoring the session from IndexedDB) instead of firing
+  // on mount. dashboard/layout.tsx's server-side cookie check happens on
+  // a completely separate auth path — it does NOT guarantee the client
+  // Firebase Auth SDK has attached an ID token yet. Without this guard,
+  // whichever listener's request goes out before that token attaches gets
+  // a permanent permission-denied (Firestore does not auto-retry a
+  // security-rule rejection), which is why this looked like an
+  // intermittent, non-deterministic failure — one listener would win the
+  // race and the other wouldn't.
   useEffect(() => {
+    if (!user) return;
     const unsub = subscribeToSession(sessionId, setSession);
     return () => unsub();
-  }, [sessionId]);
+  }, [sessionId, user]);
 
   useEffect(() => {
+    if (!user) return;
     const unsub = subscribeToRecords(sessionId, (recs) => {
       if (!isFirstRecordsLoad.current) {
         const newOnes = recs.filter((r) => !knownRecordIds.current.has(r.id));
@@ -65,7 +79,7 @@ export function LiveSessionBoard({ sessionId }: { sessionId: string }) {
       setRecords(recs);
     });
     return () => unsub();
-  }, [sessionId]);
+  }, [sessionId, user]);
 
   // Auto-rotate the QR token every 60s while the session is active.
   useEffect(() => {
