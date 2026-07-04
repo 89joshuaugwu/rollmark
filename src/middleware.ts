@@ -4,15 +4,19 @@ import { adminAuth } from "@/lib/firebase-admin";
 const COOKIE_NAME = "rollmark_session";
 
 /**
- * Next.js 16 renamed middleware.ts -> proxy.ts, and proxy runs on the
- * Node.js runtime by default (middleware was Edge-only). That means, unlike
- * the old middleware, this can fully verify the session cookie with
- * firebase-admin right here instead of doing a cheap presence check and
- * deferring real verification to `dashboard/layout.tsx`. The layout still
- * re-verifies too (defense in depth for direct server-side navigations),
- * but this is now the primary, fully-authoritative gate.
+ * NOTE (2026-07): This was proxy.ts (Next.js 16's renamed middleware
+ * convention). Reverted to middleware.ts because proxy.ts has an
+ * unresolved Next.js 16 bug on Vercel where RSC prefetch requests
+ * (?_rsc=...) and HEAD prefetches fall through to a static-file lookup
+ * for the literal path instead of hitting the proxy, causing spurious
+ * 500s on dynamic routes like /auth/lecturer-login and
+ * /auth/lecturer-signup. See https://github.com/vercel/next.js/issues/87071.
+ * The logic itself is unchanged from proxy.ts — only the filename and
+ * function name changed, plus the explicit `runtime: "nodejs"` config
+ * below, which middleware.ts needs opt-in for (proxy.ts got this for
+ * free). Revert back to proxy.ts once Vercel/Next.js ship a fix upstream.
  */
-export default async function proxy(request: NextRequest) {
+export default async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const sessionCookie = request.cookies.get(COOKIE_NAME)?.value;
 
@@ -42,5 +46,6 @@ export default async function proxy(request: NextRequest) {
 }
 
 export const config = {
+  runtime: "nodejs",
   matcher: ["/dashboard/:path*", "/auth/:path*"],
 };
