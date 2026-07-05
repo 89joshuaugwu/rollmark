@@ -56,16 +56,6 @@ export function LiveSessionBoard({ sessionId }: { sessionId: string }) {
   const knownRecordIds = useRef<Set<string>>(new Set());
   const isFirstRecordsLoad = useRef(true);
 
-  // Both listeners wait on `user` (populated once Firebase Auth's client
-  // SDK finishes restoring the session from IndexedDB) instead of firing
-  // on mount. dashboard/layout.tsx's server-side cookie check happens on
-  // a completely separate auth path — it does NOT guarantee the client
-  // Firebase Auth SDK has attached an ID token yet. Without this guard,
-  // whichever listener's request goes out before that token attaches gets
-  // a permanent permission-denied (Firestore does not auto-retry a
-  // security-rule rejection), which is why this looked like an
-  // intermittent, non-deterministic failure — one listener would win the
-  // race and the other wouldn't.
   useEffect(() => {
     if (!user) return;
     const unsub = subscribeToSession(sessionId, setSession);
@@ -74,7 +64,7 @@ export function LiveSessionBoard({ sessionId }: { sessionId: string }) {
 
   useEffect(() => {
     if (!user) return;
-    const unsub = subscribeToRecords(sessionId, (recs) => {
+    const unsub = subscribeToRecords(sessionId, user.uid, (recs) => {
       if (!isFirstRecordsLoad.current) {
         const newOnes = recs.filter((r) => !knownRecordIds.current.has(r.id));
         newOnes.forEach((r) => {
@@ -93,7 +83,6 @@ export function LiveSessionBoard({ sessionId }: { sessionId: string }) {
     return () => unsub();
   }, [sessionId, user]);
 
-  // Auto-rotate the QR token every 60s while the session is active.
   useEffect(() => {
     if (!session || session.status !== "active") return;
     const ms = msUntilNextRotation(session.qrTokenUpdatedAt);
@@ -247,10 +236,6 @@ export function LiveSessionBoard({ sessionId }: { sessionId: string }) {
           </button>
         </div>
       ) : !showEnableGeofence ? (
-        // Session was created without geofencing — SessionCreationForm has
-        // no edit path after creation, so this is the only way to add it
-        // mid-class without ending and recreating the whole session (which
-        // would lose any attendance already marked).
         <div className="mb-6">
           <button
             onClick={() => setShowEnableGeofence(true)}
@@ -265,11 +250,7 @@ export function LiveSessionBoard({ sessionId }: { sessionId: string }) {
           {newGeofenceLocation ? (
             <LocationPill point={newGeofenceLocation} />
           ) : (
-            <Button
-              variant="secondary"
-              loading={locatingForEnable}
-              onClick={captureForEnable}
-            >
+            <Button variant="secondary" loading={locatingForEnable} onClick={captureForEnable}>
               <MapPin className="h-4 w-4" />
               Capture location
             </Button>

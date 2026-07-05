@@ -9,6 +9,7 @@ import { exportSessionRecordsPdf } from "@/lib/pdfExport";
 import { Spinner } from "@/components/ui/Spinner";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
+import { useAuth } from "@/lib/auth-context";
 import { formatDate, formatTime, timeAgo } from "@/lib/utils";
 import type { AttendanceRecord, AttendanceSession } from "@/types";
 
@@ -32,6 +33,7 @@ export default function SessionHistoryPage({
   params: Promise<{ sessionId: string }>;
 }) {
   const { sessionId } = use(params);
+  const { user } = useAuth();
   const [session, setSession] = useState<AttendanceSession | null>(null);
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -40,9 +42,13 @@ export default function SessionHistoryPage({
     getSession(sessionId)
       .then(setSession)
       .finally(() => setLoading(false));
-    const unsub = subscribeToRecords(sessionId, setRecords);
-    return () => unsub();
   }, [sessionId]);
+
+  useEffect(() => {
+    if (!user) return;
+    const unsub = subscribeToRecords(sessionId, user.uid, setRecords);
+    return () => unsub();
+  }, [sessionId, user]);
 
   const downloadCsv = () => {
     const csv = toCsv(records);

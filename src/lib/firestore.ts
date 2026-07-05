@@ -33,13 +33,6 @@ function rosterCol(courseId: string) {
   return collection(db, "courses", courseId, "roster");
 }
 
-/**
- * Normalizes a raw session doc into the current shape. Handles two legacy
- * cases from before the mode -> requireGeofence migration:
- *  - old docs have `mode: "STRICT" | "PERMISSIVE"` and no `requireGeofence`
- *  - new docs have `requireGeofence` directly
- * so existing live sessions in Firestore don't need a manual data migration.
- */
 function normalizeSession(id: string, data: Record<string, unknown>): AttendanceSession {
   const legacyMode = data.mode as string | undefined;
   const requireGeofence =
@@ -95,14 +88,8 @@ export async function getCourses(lecturerId: string): Promise<Course[]> {
   return snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Course, "id">) }));
 }
 
-/**
- * Roster lives in a `courses/{courseId}/roster/{regNumber}` subcollection
- * (doc ID = reg number, so lookups during attendance validation are a
- * single `get()` rather than a query). Firestore batches cap at 500 writes,
- * so large rosters are chunked.
- */
 export async function uploadRoster(courseId: string, roster: RosterStudent[]) {
-  const CHUNK_SIZE = 450; // leave headroom under the 500 write-per-batch cap
+  const CHUNK_SIZE = 450;
   for (let i = 0; i < roster.length; i += CHUNK_SIZE) {
     const chunk = roster.slice(i, i + CHUNK_SIZE);
     const batch = writeBatch(db);
@@ -130,18 +117,6 @@ export async function deleteCourse(courseId: string) {
   await deleteDoc(doc(coursesCol, courseId));
 }
 
-/**
- * Updates the course's static share-link settings. `geofence` is optional
- * and, per the Firestore-hates-`undefined` lesson from the PERMISSIVE-mode
- * bug, is only included in the update payload when actually provided —
- * never spread in as an explicit `undefined` value.
- */
-/**
- * Backfill for courses created before the share-link feature existed —
- * `createCourse` always sets `shareSlug` now, but older course docs won't
- * have one. Called lazily from CourseList the first time a lecturer opens
- * the share settings for an old course.
- */
 export async function ensureCourseShareSlug(courseId: string, code: string): Promise<string> {
   const slug = generateShareSlug(code);
   await updateDoc(doc(coursesCol, courseId), { shareSlug: slug });
@@ -174,14 +149,25 @@ interface CreateSessionInput {
 }
 
 export async function createSession(input: CreateSessionInput): Promise<string> {
-  const ref = await addDoc(sessionsCol, {
+  const data: Record<string, unknown> = {
     ...input,
     qrToken: generateQrToken(),
     qrTokenUpdatedAt: Date.now(),
     status: "active",
     createdAt: Date.now(),
     studentsMarked: 0,
+  };
+
+  // Belt-and-suspenders: strip any undefined-valued key defensively, on top
+  // of SessionCreationForm already omitting `geofence` via conditional
+  // spread when requireGeofence is off. Firestore's client SDK throws on
+  // any field explicitly set to `undefined` — this guards createSession
+  // itself against that regardless of what a future caller passes in.
+  Object.keys(data).forEach((key) => {
+    if (data[key] === undefined) delete data[key];
   });
+
+  const ref = await addDoc(sessionsCol, data);
   return ref.id;
 }
 
@@ -231,11 +217,6 @@ export async function listSessions(
 }
 
 // ---------- Attendance records ----------
-// Student submissions no longer write here directly from the client — see
-// src/app/api/attend/[sessionId]/route.ts, which validates server-side via
-// firebase-admin and is the only writer for anonymous student submissions.
-// The functions below are for the authenticated lecturer's own actions
-// (manual add, remove, flag) against records they own.
 
 export async function markAttendanceManually(input: {
   sessionId: string;
@@ -268,9 +249,15 @@ export async function markAttendanceManually(input: {
 
 export function subscribeToRecords(
   sessionId: string,
+  lecturerId: string,
   cb: (records: AttendanceRecord[]) => void
 ) {
-  const q = query(recordsCol, where("sessionId", "==", sessionId), orderBy("submittedAt", "desc"));
+  const q = query(
+    recordsCol,
+    where("sessionId", "==", sessionId),
+    where("lecturerId", "==", lecturerId),
+    orderBy("submittedAt", "desc")
+  );
   return onSnapshot(q, (snap) => {
     cb(snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<AttendanceRecord, "id">) })));
   });

@@ -28,6 +28,7 @@ export function AttendanceForm({ sessionId, token }: { sessionId: string; token?
 
   const [location, setLocation] = useState<GeoPoint | null>(null);
   const [locationDenied, setLocationDenied] = useState(false);
+  const [locationRequested, setLocationRequested] = useState(false);
   const [distance, setDistance] = useState<number | null>(null);
 
   const [values, setValues] = useState<Record<string, string>>({});
@@ -53,10 +54,8 @@ export function AttendanceForm({ sessionId, token }: { sessionId: string; token?
       .catch(() => setStage("invalid"));
   }, [sessionId, token]);
 
-  // Live geofence check when geofencing is required — UX feedback only; the
-  // API route re-validates authoritatively on submit.
   useEffect(() => {
-    if (!session || !session.requireGeofence || !session.geofence) return;
+    if (!session || !session.requireGeofence || !session.geofence || !locationRequested) return;
 
     const unsub = watchLocation(
       (point) => {
@@ -69,9 +68,10 @@ export function AttendanceForm({ sessionId, token }: { sessionId: string; token?
       }
     );
     return unsub;
-  }, [session]);
+  }, [session, locationRequested]);
 
   const requestLocation = async () => {
+    setLocationRequested(true);
     try {
       const point = await getCurrentLocation();
       setLocation(point);
@@ -181,11 +181,17 @@ export function AttendanceForm({ sessionId, token }: { sessionId: string; token?
 
       {geofenceActive && (
         <div className="mt-4 rounded-lg border border-white/10 bg-slate-800/50 p-3.5">
-          {!location && !locationDenied && (
+          {!location && !locationDenied && !locationRequested && (
             <Button type="button" onClick={requestLocation} variant="secondary" fullWidth>
               <MapPin className="h-4 w-4" />
               Allow location access
             </Button>
+          )}
+          {!location && !locationDenied && locationRequested && (
+            <p className="flex items-center gap-2 text-sm text-text-secondary animate-pulse">
+              <MapPin className="h-4 w-4 shrink-0" />
+              Getting location...
+            </p>
           )}
           {locationDenied && (
             <p className="flex items-center gap-2 text-sm text-rose">
