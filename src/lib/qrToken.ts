@@ -8,7 +8,7 @@
  * on top of this).
  */
 
-const ROTATION_MS = 60_000;
+const ROTATION_MS = 60_000; 
 
 export function generateQrToken(): string {
   const bytes = new Uint8Array(9);
