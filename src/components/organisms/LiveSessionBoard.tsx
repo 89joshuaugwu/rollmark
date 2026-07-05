@@ -29,7 +29,7 @@ import {
 } from "@/lib/actions/session-actions";
 import { buildAttendUrl, msUntilNextRotation, QR_ROTATION_MS } from "@/lib/qrToken";
 import { getCurrentLocation, GeolocationError } from "@/lib/geolocation";
-import { timeAgo } from "@/lib/utils";
+import { timeAgo, parseNaijaDateTime } from "@/lib/utils";
 import type { AttendanceRecord, AttendanceSession, GeoPoint } from "@/types";
 
 export function LiveSessionBoard({ sessionId }: { sessionId: string }) {
@@ -91,6 +91,30 @@ export function LiveSessionBoard({ sessionId }: { sessionId: string }) {
     }, ms || QR_ROTATION_MS);
     return () => clearTimeout(timeout);
   }, [session, sessionId]);
+
+  // Auto-end the session the instant its scheduled endTime passes, for
+  // whoever currently has this board open. This is the *immediate* path —
+  // the /api/cron/end-expired-sessions cron job is the authoritative
+  // backstop for sessions nobody is actively watching, since a browser tab
+  // can't fire a timer for a page that's closed. Both write the same
+  // `status: "ended"`, so whichever gets there first is fine.
+  useEffect(() => {
+    if (!session || session.status !== "active") return;
+    const msUntilExpiry = parseNaijaDateTime(session.endTime) - Date.now();
+    if (msUntilExpiry <= 0) {
+      endSessionAction(sessionId).then(() => {
+        notify.info("Session auto-ended — its scheduled time was reached");
+        router.push(`/dashboard/sessions/${sessionId}/history`);
+      });
+      return;
+    }
+    const timeout = setTimeout(async () => {
+      await endSessionAction(sessionId);
+      notify.info("Session auto-ended — its scheduled time was reached");
+      router.push(`/dashboard/sessions/${sessionId}/history`);
+    }, msUntilExpiry);
+    return () => clearTimeout(timeout);
+  }, [session, sessionId, router]);
 
   if (!session) {
     return <p className="py-10 text-center text-sm text-text-secondary">Loading session...</p>;

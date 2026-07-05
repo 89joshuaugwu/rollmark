@@ -51,3 +51,21 @@ export function timeAgo(timestamp: number): string {
   const days = Math.floor(hrs / 24);
   return `${days}d ago`;
 }
+
+/**
+ * Session `date`/`startTime`/`endTime` fields are stored as naive
+ * datetime strings (e.g. "2026-07-05T23:00:00") with no timezone offset —
+ * built straight from a lecturer's <input type="date"/"time"> in their
+ * browser, which is always Nigeria (WAT, UTC+1, no DST).
+ *
+ * Parsing a naive ISO string with `new Date(...)` is NOT safe across
+ * environments: browsers interpret it as the user's local time (correct,
+ * since the lecturer IS in Nigeria), but Vercel's serverless functions run
+ * in UTC — so the same string parsed server-side (e.g. in a cron job)
+ * would be off by exactly one hour. Explicitly appending the WAT offset
+ * makes the parse correct regardless of which environment runs it.
+ */
+export function parseNaijaDateTime(naive: string): number {
+  const hasOffset = /[+-]\d{2}:\d{2}$|Z$/.test(naive);
+  return new Date(hasOffset ? naive : `${naive}+01:00`).getTime();
+}

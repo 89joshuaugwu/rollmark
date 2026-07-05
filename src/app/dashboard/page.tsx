@@ -8,7 +8,7 @@ import { listSessions } from "@/lib/firestore";
 import { Card } from "@/components/ui/Card";
 import { Spinner } from "@/components/ui/Spinner";
 import { SessionCard } from "@/components/molecules/SessionCard";
-import { timeAgo } from "@/lib/utils";
+import { timeAgo, parseNaijaDateTime } from "@/lib/utils";
 import type { AttendanceSession } from "@/types";
 
 export default function DashboardHomePage() {
@@ -24,7 +24,15 @@ export default function DashboardHomePage() {
       .finally(() => setLoading(false));
   }, [user]);
 
-  const active = sessions.filter((s) => s.status === "active");
+  // `status === "active"` alone isn't enough — a session past its endTime
+  // may not have been flipped to "ended" yet (the cron runs every 5min at
+  // best, and only fires if a lecturer has that specific board open for
+  // the client-side auto-end). Filtering on endTime here too means the
+  // dashboard never visually shows an expired session as "live", even
+  // during that gap, regardless of backend state lag.
+  const active = sessions.filter(
+    (s) => s.status === "active" && parseNaijaDateTime(s.endTime) > now
+  );
   const recent = sessions.filter((s) => s.status === "ended").slice(0, 5);
 
   const thisMonth = sessions.filter(
