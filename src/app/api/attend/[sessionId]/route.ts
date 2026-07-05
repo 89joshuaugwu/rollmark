@@ -1,11 +1,32 @@
 import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/lib/firebase-admin";
-import { haversineMeters } from "@/lib/utils";
+import { haversineMeters, parseNaijaDateTime } from "@/lib/utils";
 import { sendDuplicateDeviceAlert } from "@/lib/server/email";
 import type { AttendanceSession } from "@/types";
 
 export const runtime = "nodejs";
+
+/**
+ * Lazy expiry check — no cron needed for this. Every session access already
+ * happens through a real HTTP request (a student scanning, a lecturer
+ * viewing their board), so checking `endTime` right here, on the request
+ * that's already happening, catches every case a periodic sweep would —
+ * without needing Vercel Cron at all (which on the Hobby plan is capped at
+ * once/day and fails deployment outright above that). Opportunistically
+ * persists `status: "ended"` the first time anyone touches an expired
+ * session, so it self-heals in the DB without a background job.
+ */
+async function endIfExpired(
+  ref: FirebaseFirestore.DocumentReference,
+  data: Record<string, unknown>
+): Promise<boolean> {
+  if (data.status === "ended") return true;
+  if (typeof data.endTime !== "string") return false;
+  if (parseNaijaDateTime(data.endTime) > Date.now()) return false;
+  await ref.update({ status: "ended" });
+  return true;
+}
 
 // ---------- GET: sanitized session info for the public /attend page ----------
 
@@ -16,14 +37,15 @@ export async function GET(
   const { sessionId } = await params;
   const token = new URL(req.url).searchParams.get("t");
 
-  const snap = await adminDb().collection("sessions").doc(sessionId).get();
+  const ref = adminDb().collection("sessions").doc(sessionId);
+  const snap = await ref.get();
   if (!snap.exists) {
     return NextResponse.json({ status: "invalid" });
   }
 
   const data = snap.data() as Record<string, unknown>;
 
-  if (data.status === "ended") {
+  if (await endIfExpired(ref, data)) {
     return NextResponse.json({ status: "ended" });
   }
   if (token && data.qrToken !== token) {
@@ -96,7 +118,7 @@ export async function POST(
       ? session.requireGeofence
       : session.mode === "STRICT";
 
-  if (session.status === "ended") {
+  if (await endIfExpired(sessionRef, session)) {
     return NextResponse.json({ error: "This session has ended." }, { status: 409 });
   }
 

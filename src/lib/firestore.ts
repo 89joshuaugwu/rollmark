@@ -16,6 +16,7 @@ import {
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { generateQrToken } from "@/lib/qrToken";
+import { parseNaijaDateTime } from "@/lib/utils";
 import type {
   AttendanceRecord,
   AttendanceSession,
@@ -213,7 +214,23 @@ export async function listSessions(
   if (opts?.courseId) clauses.push(where("courseId", "==", opts.courseId));
   const q = query(sessionsCol, ...clauses, orderBy("createdAt", "desc"), fsLimit(opts?.max ?? 50));
   const snap = await getDocs(q);
-  return snap.docs.map((d) => normalizeSession(d.id, d.data()));
+  const sessions = snap.docs.map((d) => normalizeSession(d.id, d.data()));
+
+  // Lazy self-heal: any session still marked "active" past its endTime
+  // gets corrected here, the moment the lecturer's own dashboard lists it —
+  // no separate cron/background sweep needed. This runs alongside (not
+  // instead of) LiveSessionBoard's immediate client-side auto-end; whichever
+  // path notices first wins, both just write the same `status: "ended"`.
+  const now = Date.now();
+  const expired = sessions.filter((s) => s.status === "active" && parseNaijaDateTime(s.endTime) <= now);
+  if (expired.length > 0) {
+    await Promise.all(expired.map((s) => updateDoc(doc(sessionsCol, s.id), { status: "ended" })));
+    expired.forEach((s) => {
+      s.status = "ended";
+    });
+  }
+
+  return sessions;
 }
 
 // ---------- Attendance records ----------
