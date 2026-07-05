@@ -41,6 +41,29 @@ export async function updateGeofenceAction(
   await ref.update({ geofence });
 }
 
+/**
+ * Turns geofencing on/off for a session that's already been created —
+ * SessionCreationForm only sets this at creation time, with no edit path
+ * afterward. This lets a lecturer who started a session without it (then
+ * realized they wanted it) add it mid-class without ending and recreating
+ * the whole session, losing whatever attendance was already marked.
+ * Turning it off intentionally leaves any previously-captured `geofence`
+ * in place (untouched) so re-enabling later doesn't require recapturing
+ * location — pass a new `geofence` alongside `requireGeofence: true` only
+ * when actually changing/setting the location.
+ */
+export async function setRequireGeofenceAction(
+  sessionId: string,
+  requireGeofence: boolean,
+  geofence?: { center: GeoPoint; radiusMeters: number }
+) {
+  const { ref } = await requireOwnedSession(sessionId);
+  await ref.update({
+    requireGeofence,
+    ...(geofence !== undefined ? { geofence } : {}),
+  });
+}
+
 export async function endSessionAction(sessionId: string) {
   const { ref, data } = await requireOwnedSession(sessionId);
   await ref.update({ status: "ended" });

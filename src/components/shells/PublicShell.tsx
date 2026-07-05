@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ScanLine } from "lucide-react";
+import Image from "next/image";
 
 export function PublicShell({
   children,
@@ -13,7 +13,7 @@ export function PublicShell({
       {showNav && (
         <header className="flex items-center justify-between px-5 py-4 md:px-10">
           <Link href="/" className="flex items-center gap-2">
-            <ScanLine className="h-6 w-6 text-emerald" />
+            <Image src="/logo.svg" alt="RollMark" width={28} height={28} priority />
             <span className="text-lg font-bold">RollMark</span>
           </Link>
         </header>

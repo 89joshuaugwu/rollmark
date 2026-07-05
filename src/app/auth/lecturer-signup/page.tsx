@@ -4,7 +4,7 @@ import { useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { ScanLine } from "lucide-react";
+import Image from "next/image";
 import { PublicShell } from "@/components/shells/PublicShell";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
@@ -79,7 +79,7 @@ export default function LecturerSignupPage() {
           transition={{ duration: 0.3 }}
         >
           <div className="mb-6 flex items-center gap-2 md:hidden">
-            <ScanLine className="h-6 w-6 text-emerald" />
+            <Image src="/logo.svg" alt="RollMark" width={26} height={26} />
             <span className="text-lg font-bold">RollMark</span>
           </div>
           <h2 className="text-2xl font-bold">Create your account</h2>

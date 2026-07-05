@@ -19,6 +19,13 @@ export function ShareLinkSettings({
   onSlugBackfilled: (slug: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  // `enabled` is local UI state only — flipping the toggle never talks to
+  // Firestore by itself. It just decides whether the capture section below
+  // is shown. Nothing is actually persisted until "Save" is pressed, which
+  // is where the "must capture location first" validation belongs — not on
+  // the toggle itself. Toggling it on used to immediately try to save and
+  // error out with "Capture a location first," which was confusing since
+  // there was no visible next step after that error.
   const [enabled, setEnabled] = useState(course.shareGeofenceEnabled);
   const [location, setLocation] = useState<GeoPoint | null>(
     course.shareGeofence?.center ?? null
@@ -31,6 +38,11 @@ export function ShareLinkSettings({
   const slug = course.shareSlug;
   const origin = typeof window !== "undefined" ? window.location.origin : "";
   const shareUrl = slug ? `${origin}/s/${slug}` : "";
+
+  const isDirty =
+    enabled !== course.shareGeofenceEnabled ||
+    (enabled && location?.lat !== course.shareGeofence?.center.lat) ||
+    (enabled && radius !== (course.shareGeofence?.radiusMeters ?? 50));
 
   const handleOpen = async () => {
     if (!slug) {
@@ -57,35 +69,18 @@ export function ShareLinkSettings({
     }
   };
 
-  const handleToggle = async (next: boolean) => {
-    if (next && !location) {
-      notify.error("Capture a location first to enable range-gating");
+  const handleSave = async () => {
+    if (enabled && !location) {
+      notify.error("Capture a location first, then save");
       return;
     }
-    setEnabled(next);
-    setSaving(true);
-    try {
-      await setCourseShareSettings(course.id, {
-        enabled: next,
-        ...(location ? { geofence: { center: location, radiusMeters: radius } } : {}),
-      });
-    } catch {
-      notify.error("Couldn't save share settings");
-      setEnabled(!next);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleSaveGeofence = async () => {
-    if (!location) return;
     setSaving(true);
     try {
       await setCourseShareSettings(course.id, {
         enabled,
-        geofence: { center: location, radiusMeters: radius },
+        ...(location ? { geofence: { center: location, radiusMeters: radius } } : {}),
       });
-      notify.success("Share range updated");
+      notify.success("Share settings saved");
     } catch {
       notify.error("Couldn't save share settings");
     } finally {
@@ -134,7 +129,7 @@ export function ShareLinkSettings({
 
       <Toggle
         checked={enabled}
-        onChange={handleToggle}
+        onChange={setEnabled}
         label="Require range to open this link"
         description="Whoever opens it (e.g. course rep) must be physically near the classroom."
       />
@@ -160,18 +155,20 @@ export function ShareLinkSettings({
             </Button>
           )}
           <GeofenceRadius value={radius} onChange={setRadius} />
-          <Button variant="secondary" loading={saving} onClick={handleSaveGeofence}>
-            Save range
-          </Button>
         </div>
       )}
 
-      <button
-        onClick={() => setOpen(false)}
-        className="text-xs text-text-secondary hover:text-white hover:underline"
-      >
-        Close
-      </button>
+      <div className="flex items-center gap-3">
+        <Button loading={saving} disabled={!isDirty} onClick={handleSave}>
+          Save
+        </Button>
+        <button
+          onClick={() => setOpen(false)}
+          className="text-xs text-text-secondary hover:text-white hover:underline"
+        >
+          Close
+        </button>
+      </div>
     </div>
   );
 }

@@ -2,9 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { RefreshCw, UserPlus } from "lucide-react";
+import { RefreshCw, UserPlus, MapPin } from "lucide-react";
 import { QRDisplay } from "@/components/molecules/QRDisplay";
 import { LocationPill } from "@/components/molecules/LocationPill";
+import { GeofenceRadius } from "@/components/molecules/GeofenceRadius";
 import { LiveTicker } from "@/components/molecules/LiveTicker";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -20,11 +21,16 @@ import {
   flagAttendanceRecord,
   unflagAttendanceRecord,
 } from "@/lib/firestore";
-import { rotateQrTokenAction, updateGeofenceAction, endSessionAction } from "@/lib/actions/session-actions";
+import {
+  rotateQrTokenAction,
+  updateGeofenceAction,
+  setRequireGeofenceAction,
+  endSessionAction,
+} from "@/lib/actions/session-actions";
 import { buildAttendUrl, msUntilNextRotation, QR_ROTATION_MS } from "@/lib/qrToken";
 import { getCurrentLocation, GeolocationError } from "@/lib/geolocation";
 import { timeAgo } from "@/lib/utils";
-import type { AttendanceRecord, AttendanceSession } from "@/types";
+import type { AttendanceRecord, AttendanceSession, GeoPoint } from "@/types";
 
 export function LiveSessionBoard({ sessionId }: { sessionId: string }) {
   const router = useRouter();
@@ -35,6 +41,12 @@ export function LiveSessionBoard({ sessionId }: { sessionId: string }) {
   const [showEndConfirm, setShowEndConfirm] = useState(false);
   const [ending, setEnding] = useState(false);
   const [recapturing, setRecapturing] = useState(false);
+
+  const [showEnableGeofence, setShowEnableGeofence] = useState(false);
+  const [newGeofenceLocation, setNewGeofenceLocation] = useState<GeoPoint | null>(null);
+  const [newGeofenceRadius, setNewGeofenceRadius] = useState(50);
+  const [locatingForEnable, setLocatingForEnable] = useState(false);
+  const [savingGeofenceToggle, setSavingGeofenceToggle] = useState(false);
 
   const [manualReg, setManualReg] = useState("");
   const [manualFirst, setManualFirst] = useState("");
@@ -114,6 +126,50 @@ export function LiveSessionBoard({ sessionId }: { sessionId: string }) {
     }
   };
 
+  const captureForEnable = async () => {
+    setLocatingForEnable(true);
+    try {
+      const point = await getCurrentLocation();
+      setNewGeofenceLocation(point);
+    } catch (err) {
+      if (err instanceof GeolocationError) notify.error(err.message);
+    } finally {
+      setLocatingForEnable(false);
+    }
+  };
+
+  const handleEnableGeofence = async () => {
+    if (!newGeofenceLocation) {
+      notify.error("Capture your location first");
+      return;
+    }
+    setSavingGeofenceToggle(true);
+    try {
+      await setRequireGeofenceAction(sessionId, true, {
+        center: newGeofenceLocation,
+        radiusMeters: newGeofenceRadius,
+      });
+      notify.success("Location requirement turned on");
+      setShowEnableGeofence(false);
+    } catch {
+      notify.error("Couldn't enable location requirement");
+    } finally {
+      setSavingGeofenceToggle(false);
+    }
+  };
+
+  const handleDisableGeofence = async () => {
+    setSavingGeofenceToggle(true);
+    try {
+      await setRequireGeofenceAction(sessionId, false);
+      notify.success("Location requirement turned off");
+    } catch {
+      notify.error("Couldn't turn off location requirement");
+    } finally {
+      setSavingGeofenceToggle(false);
+    }
+  };
+
   const handleManualAdd = async () => {
     if (!manualReg.trim() || !manualFirst.trim() || !manualSurname.trim()) return;
     setManualSubmitting(true);
@@ -168,7 +224,7 @@ export function LiveSessionBoard({ sessionId }: { sessionId: string }) {
         <QRDisplay value={qrValue} qrTokenUpdatedAt={session.qrTokenUpdatedAt} />
       </div>
 
-      {session.requireGeofence && session.geofence && (
+      {session.requireGeofence && session.geofence ? (
         <div className="mb-6 flex flex-wrap items-center gap-2">
           <LocationPill point={session.geofence.center} />
           <span className="text-xs text-text-secondary">
@@ -182,6 +238,51 @@ export function LiveSessionBoard({ sessionId }: { sessionId: string }) {
             <RefreshCw className={`h-3 w-3 ${recapturing ? "animate-spin" : ""}`} />
             Recapture
           </button>
+          <button
+            onClick={handleDisableGeofence}
+            disabled={savingGeofenceToggle}
+            className="inline-flex items-center gap-1 text-xs text-text-secondary hover:text-rose hover:underline disabled:opacity-50"
+          >
+            Turn off
+          </button>
+        </div>
+      ) : !showEnableGeofence ? (
+        // Session was created without geofencing — SessionCreationForm has
+        // no edit path after creation, so this is the only way to add it
+        // mid-class without ending and recreating the whole session (which
+        // would lose any attendance already marked).
+        <div className="mb-6">
+          <button
+            onClick={() => setShowEnableGeofence(true)}
+            className="inline-flex items-center gap-1.5 text-xs text-emerald hover:underline"
+          >
+            <MapPin className="h-3.5 w-3.5" />
+            Turn on location requirement for this session
+          </button>
+        </div>
+      ) : (
+        <div className="mb-6 space-y-3 rounded-lg border border-white/10 p-3.5">
+          {newGeofenceLocation ? (
+            <LocationPill point={newGeofenceLocation} />
+          ) : (
+            <Button
+              variant="secondary"
+              loading={locatingForEnable}
+              onClick={captureForEnable}
+            >
+              <MapPin className="h-4 w-4" />
+              Capture location
+            </Button>
+          )}
+          <GeofenceRadius value={newGeofenceRadius} onChange={setNewGeofenceRadius} />
+          <div className="flex gap-2">
+            <Button loading={savingGeofenceToggle} onClick={handleEnableGeofence}>
+              Turn on
+            </Button>
+            <Button variant="ghost" onClick={() => setShowEnableGeofence(false)}>
+              Cancel
+            </Button>
+          </div>
         </div>
       )}
 

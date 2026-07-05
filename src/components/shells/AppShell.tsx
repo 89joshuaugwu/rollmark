@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard,
@@ -10,7 +11,6 @@ import {
   BarChart3,
   Settings,
   LogOut,
-  ScanLine,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { Spinner } from "@/components/ui/Spinner";
@@ -57,7 +57,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {/* Desktop sidebar */}
       <aside className="hidden w-64 shrink-0 border-r border-white/5 bg-slate-dark/40 md:flex md:flex-col">
         <div className="flex items-center gap-2 px-6 py-5">
-          <ScanLine className="h-6 w-6 text-emerald" />
+          <Image src="/logo.svg" alt="RollMark" width={26} height={26} />
           <span className="text-lg font-bold">RollMark</span>
         </div>
         <nav className="flex-1 space-y-1 px-3">
@@ -91,7 +91,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {/* Mobile top bar */}
       <header className="flex items-center justify-between border-b border-white/5 px-4 py-3 md:hidden">
         <div className="flex items-center gap-2">
-          <ScanLine className="h-5 w-5 text-emerald" />
+          <Image src="/logo.svg" alt="RollMark" width={22} height={22} />
           <span className="font-bold">RollMark</span>
         </div>
         <button
