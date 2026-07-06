@@ -194,7 +194,7 @@ src/
    `lib/firebase-admin.ts` throws if they're missing.
 3. Add your Vercel domain to Firebase Console → Authentication → Settings → Authorized
    domains (needed for Google sign-in).
-4. Deploy. The `crons` block in `vercel.json` activates automatically on Vercel — no
-   extra setup needed beyond `CRON_SECRET` being set.
+4. Deploy. The `crons` block in `vercel.json` (just the weekly summary email)
+   activates automatically on Vercel.
 5. Manually publish `firestore.rules` in the Firebase Console (see §2) — separate from
    the Vercel deploy, easy to forget.
