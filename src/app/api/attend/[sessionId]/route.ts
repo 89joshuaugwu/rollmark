@@ -3,7 +3,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/lib/firebase-admin";
 import { haversineMeters, parseNaijaDateTime } from "@/lib/utils";
 import { sendDuplicateDeviceAlert } from "@/lib/server/email";
-import type { AttendanceSession } from "@/types";
+import type { AttendanceSession, SessionField } from "@/types";
 
 export const runtime = "nodejs";
 
@@ -73,14 +73,15 @@ export async function GET(
 
 interface SubmitBody {
   qrToken: string;
-  regNumber: string;
-  firstName: string;
-  surname: string;
+  regNumber?: string;
+  firstName?: string;
+  surname?: string;
   middleName?: string;
   phone?: string;
   email?: string;
   location?: { lat: number; lng: number; accuracy: number };
   fingerprint: string;
+  [key: string]: unknown;
 }
 
 export async function POST(
@@ -95,11 +96,13 @@ export async function POST(
     return NextResponse.json({ error: "Malformed request." }, { status: 400 });
   }
 
-  const { qrToken, regNumber, firstName, surname, middleName, phone, email, location, fingerprint } =
-    body;
+  const { qrToken, location, fingerprint } = body;
 
-  if (!regNumber?.trim() || !firstName?.trim() || !surname?.trim() || !fingerprint) {
-    return NextResponse.json({ error: "Please fill in all required fields." }, { status: 400 });
+  if (!fingerprint) {
+    return NextResponse.json(
+      { error: "Unable to identify this device. Please try again." },
+      { status: 400 }
+    );
   }
 
   const db = adminDb();
@@ -117,6 +120,25 @@ export async function POST(
     typeof session.requireGeofence === "boolean"
       ? session.requireGeofence
       : session.mode === "STRICT";
+
+  // Validate against the session's actual field configuration rather than a
+  // hard-coded list — a session can turn any of the default fields off, or
+  // add custom fields, so "required" is whatever the lecturer configured.
+  const fields: SessionField[] = Array.isArray(session.fields) ? session.fields : [];
+  for (const field of fields) {
+    if (field.requirement !== "required") continue;
+    const value = body[field.key];
+    if (typeof value !== "string" || !value.trim()) {
+      return NextResponse.json({ error: `${field.label} is required.` }, { status: 400 });
+    }
+  }
+
+  const regNumber = typeof body.regNumber === "string" ? body.regNumber.trim() : "";
+  const firstName = typeof body.firstName === "string" ? body.firstName.trim() : "";
+  const surname = typeof body.surname === "string" ? body.surname.trim() : "";
+  const middleName = typeof body.middleName === "string" ? body.middleName.trim() : "";
+  const phone = typeof body.phone === "string" ? body.phone.trim() : "";
+  const email = typeof body.email === "string" ? body.email.trim() : "";
 
   if (await endIfExpired(sessionRef, session)) {
     return NextResponse.json({ error: "This session has ended." }, { status: 409 });
@@ -152,12 +174,21 @@ export async function POST(
     }
   }
 
-  const normalizedReg = regNumber.trim().toUpperCase();
+  const normalizedReg = regNumber.toUpperCase();
 
   // 3. Roster validation — only enforced once a roster has been uploaded.
   const courseSnap = await db.collection("courses").doc(session.courseId).get();
   const rosterCount = (courseSnap.data()?.rosterCount as number | undefined) ?? 0;
   if (rosterCount > 0) {
+    if (!normalizedReg) {
+      return NextResponse.json(
+        {
+          error:
+            "Registration number is required for this course because a student roster has been uploaded.",
+        },
+        { status: 400 }
+      );
+    }
     const rosterEntry = await db
       .collection("courses")
       .doc(session.courseId)
@@ -169,10 +200,16 @@ export async function POST(
     }
   }
 
-  // 4. Duplicate check — atomic via deterministic doc ID + create(), which
-  // throws ALREADY_EXISTS instead of needing a separate query + write that
-  // could race under concurrent submissions.
-  const recordRef = db.collection("attendanceRecords").doc(`${sessionId}_${normalizedReg}`);
+  // 4. Record ID. A deterministic `${sessionId}_${normalizedReg}` ID gives
+  // free atomic dedup via create()'s ALREADY_EXISTS — but only holds when
+  // regNumber is guaranteed present. Since fields (including Reg Number)
+  // can be turned off per session, there's no guaranteed unique identifier
+  // to key on in the general case, so we fall back to an auto-ID whenever
+  // regNumber isn't collected. Duplicate prevention in that case relies on
+  // the fingerprint soft-flag below instead of a hard block.
+  const recordRef = normalizedReg
+    ? db.collection("attendanceRecords").doc(`${sessionId}_${normalizedReg}`)
+    : db.collection("attendanceRecords").doc();
 
   // 5. Fingerprint fraud flag (soft — log/flag, don't block).
   const deviceQuery = await db
@@ -189,11 +226,11 @@ export async function POST(
       lecturerId: session.lecturerId,
       courseCode: session.courseCode,
       regNumber: normalizedReg,
-      firstName: firstName.trim(),
-      surname: surname.trim(),
-      middleName: middleName?.trim() ?? "",
-      phone: phone ?? "",
-      email: email ?? "",
+      firstName,
+      surname,
+      middleName,
+      phone,
+      email,
       location: location ?? null,
       distanceFromLecturerMeters,
       deviceFingerprint: fingerprint,

@@ -149,12 +149,7 @@ export function AttendanceForm({ sessionId, token }: { sessionId: string; token?
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           qrToken: token,
-          regNumber: values["regNumber"] ?? "",
-          firstName: values["firstName"] ?? "",
-          surname: values["surname"] ?? "",
-          middleName: values["middleName"],
-          phone: values["phone"],
-          email: values["email"],
+          ...values,
           location: location ?? undefined,
           fingerprint,
         }),

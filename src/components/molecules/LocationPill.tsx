@@ -11,6 +11,9 @@ export function LocationPill({
   label?: string;
   className?: string;
 }) {
+  const latHemisphere = point.lat >= 0 ? "N" : "S";
+  const lngHemisphere = point.lng >= 0 ? "E" : "W";
+
   return (
     <div
       className={cn(
@@ -20,7 +23,8 @@ export function LocationPill({
     >
       <MapPin className="h-4 w-4 shrink-0" />
       <span className="font-mono text-xs">
-        {label}: {point.lat.toFixed(4)}°N, {point.lng.toFixed(4)}°E ±{Math.round(point.accuracy)}m
+        {label}: {Math.abs(point.lat).toFixed(4)}°{latHemisphere},{" "}
+        {Math.abs(point.lng).toFixed(4)}°{lngHemisphere} ±{Math.round(point.accuracy)}m
       </span>
     </div>
   );

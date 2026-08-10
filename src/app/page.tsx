@@ -64,7 +64,7 @@ export default function LandingPage() {
       </section>
 
       <footer className="w-full max-w-5xl border-t border-white/5 py-6 text-center text-xs text-text-secondary">
-        <p>© {new Date().getFullYear()} RollMark. Built by Joshuazaza.</p>
+        <p>© {new Date().getFullYear()} RollMark. All rights reserved.</p>
       </footer>
     </PublicShell>
   );
